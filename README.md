@@ -53,7 +53,7 @@ This repository implements a complete, reproducible pipeline for screening Metal
  │  STEP 4  Exhaustive ensemble ablation (all 2/3/4-model combos)           │
  │     │    Optimize recall@50 via RRF, rank averaging, voting              │
  │     ▼                                                                     │
- │  STEP 5  Generate publication-quality report (15+ figures)               │
+ │  STEP 5  Generate comprehensive analysis report (15+ figures)            │
  │     ▼                                                                     │
  │  STEP 6  Phase6 Discovery — Inference on new unlabeled MOFs              │
  │          → Consensus top-25 candidates for DFT validation                │
@@ -75,6 +75,7 @@ This repository implements a complete, reproducible pipeline for screening Metal
 ```
 MOF-Bandgap-Discovery/
 ├── README.md                             # This file
+├── LICENSE                               # MIT License
 ├── requirements.txt                      # Python dependencies
 ├── .gitignore
 │
@@ -83,7 +84,7 @@ MOF-Bandgap-Discovery/
 │   ├── embedding_classifier.py           #   15+ sklearn classifier methods
 │   ├── ensemble_discovery.py             #   RRF / exhaustive ensemble ablation
 │   ├── knn_baseline.py                   #   kNN regression & similarity baselines
-│   ├── generate_final_report.py          #   Publication figures & markdown report
+│   ├── generate_final_report.py          #   Analysis figures & markdown report
 │   ├── compare_results.py                #   Cross-method comparison reports
 │   ├── verify_ml_heatmap.py              #   ML performance heatmap verification
 │   ├── reinfer_nn.py                     #   Re-run NN inference from checkpoints
@@ -128,7 +129,7 @@ MOF-Bandgap-Discovery/
 │   ├── 02_train_nn.sh                    #   Fine-tune MOFTransformer (3 seeds)
 │   ├── 03_train_ml.sh                    #   Train sklearn classifiers + kNN
 │   ├── 04_run_ensemble.sh                #   Exhaustive ensemble ablation
-│   ├── 05_generate_report.sh             #   Publication-quality report
+│   ├── 05_generate_report.sh             #   Comprehensive analysis report
 │   ├── 06_run_discovery.sh               #   Phase6 — full inference pipeline
 │   └── optional/
 │       ├── run_umap_analysis.sh          #   UMAP embedding visualizations
@@ -210,7 +211,7 @@ sbatch scripts/01_extract_embeddings.sh     # GPU, ~2-4h   — embeddings + spli
 sbatch scripts/02_train_nn.sh               # GPU, ~24-69h — 3 NN experiments
 sbatch scripts/03_train_ml.sh               # CPU, ~2-6h   — 15+ sklearn classifiers
 sbatch scripts/04_run_ensemble.sh           # CPU, ~1-2h   — exhaustive ensemble search
-sbatch scripts/05_generate_report.sh        # CPU, ~15min  — publication figures
+sbatch scripts/05_generate_report.sh        # CPU, ~15min  — analysis report
 sbatch scripts/06_run_discovery.sh          # GPU, ~4-8h   — inference on new MOFs (optional)
 ```
 
@@ -384,7 +385,7 @@ This is where the pipeline finds the **optimal combination of models**. It tests
 sbatch scripts/05_generate_report.sh
 ```
 
-Reads all results and produces **15+ publication-quality figures** and a markdown summary:
+Reads all results and produces **15+ figures with full metrics** and a markdown summary:
 
 - Model leaderboard (ensemble vs. individual methods)
 - Discovery confusion matrices (top-K)
@@ -681,7 +682,7 @@ data/
 │   │       └── top{25,50,100}_for_discovery.txt
 │   └── selective/                            # Signal-bearing models only
 │
-├── final_results/                            # Publication-quality report
+├── final_results/                            # Comprehensive analysis report
 │   ├── summary.md                            # Text report
 │   └── fig*.png                              # 15+ figures
 │
@@ -739,8 +740,9 @@ If you use this code in your research, please cite:
 @misc{mof-bandgap-discovery,
   title  = {MOF-Bandgap-Discovery: Multi-Model Ensemble Learning for
             Low-Bandgap Metal--Organic Framework Screening},
-  author = {TODO},
+  author = {Erbil, Ege Yi\u011fit},
   year   = {2025},
+  note   = {Ko\c{c} University},
   url    = {https://github.com/<your-username>/MOF-Bandgap-Discovery}
 }
 ```
@@ -749,4 +751,4 @@ If you use this code in your research, please cite:
 
 ## License
 
-TODO: Add license.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

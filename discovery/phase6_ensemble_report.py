@@ -40,7 +40,7 @@ import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-for d in (SCRIPT_DIR, PROJECT_ROOT):
+for d in (SCRIPT_DIR, PROJECT_ROOT, os.path.join(PROJECT_ROOT, "src")):
     if d not in sys.path:
         sys.path.insert(0, d)
 

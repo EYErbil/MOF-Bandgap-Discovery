@@ -8,10 +8,10 @@
 #SBATCH --mem=16G
 
 # =============================================================================
-# STEP 5: Generate Publication-Quality Final Report
+# STEP 5: Generate Comprehensive Analysis Report
 # =============================================================================
 #
-# Reads all ensemble results and produces 15+ publication-quality figures:
+# Reads all ensemble results and produces 15+ analysis figures:
 #   - Model leaderboard (ensemble vs individual)
 #   - Confusion matrices (top-K discovery)
 #   - Recall/precision curves per model

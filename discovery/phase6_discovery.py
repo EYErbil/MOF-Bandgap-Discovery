@@ -25,8 +25,8 @@ from collections import defaultdict
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-# Prefer Phase6 (SCRIPT_DIR) so predict_with_embedding_classifier is found when copied to Phase6
-for d in (SCRIPT_DIR, PROJECT_ROOT):
+# Include src/ for predict_with_embedding_classifier; include SCRIPT_DIR for ensemble_phase6_predictions
+for d in (SCRIPT_DIR, PROJECT_ROOT, os.path.join(PROJECT_ROOT, "src")):
     if d not in sys.path:
         sys.path.insert(0, d)
 

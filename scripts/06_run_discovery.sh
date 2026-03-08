@@ -97,16 +97,25 @@ section "STEP 6c: NN INFERENCE"
 
 for exp_name in $NN_EXPERIMENTS; do
     exp_dir="$EXP_BASE/$exp_name"
-    if [ -f "$exp_dir/run.py" ]; then
-        echo "  Inferring with $exp_name..."
-        cd "$exp_dir"
-        python "$BASE_DIR/discovery/run_inference_from_cwd.py" \
-            --data_dir "$PHASE6_DATA" \
-            --top_k "$TOP_K"
-        cd "$BASE_DIR"
-        echo "  Done: $exp_dir/inference_predictions.csv"
+    if [ ! -d "$exp_dir" ]; then
+        echo "  WARNING: $exp_dir does not exist. Skipping."
+        continue
+    fi
+    ckpt=$(ls "$exp_dir"/best_es-*.ckpt 2>/dev/null | head -1)
+    if [ -z "$ckpt" ]; then
+        echo "  WARNING: No checkpoint in $exp_dir. Skipping."
+        continue
+    fi
+    echo "  Inferring with $exp_name (checkpoint: $(basename $ckpt))..."
+    cd "$exp_dir"
+    python "$BASE_DIR/discovery/run_inference_from_cwd.py" \
+        --data_dir "$PHASE6_DATA" \
+        --top_k "$TOP_K"
+    cd "$BASE_DIR"
+    if [ -f "$exp_dir/inference_predictions.csv" ]; then
+        echo "  OK: $exp_dir/inference_predictions.csv"
     else
-        echo "  WARNING: $exp_name not found, skipping."
+        echo "  WARNING: inference_predictions.csv not produced for $exp_name"
     fi
 done
 
@@ -153,6 +162,7 @@ section "STEP 6e: ENSEMBLE REPORT"
 
 python discovery/phase6_ensemble_report.py \
     --base_dir "$BASE_DIR" \
+    --auto_discover \
     --output_dir "$PHASE6_DATA/ensemble_report"
 
 section "STEP 6 COMPLETE — PHASE6 DISCOVERY"

@@ -8,10 +8,10 @@ applies Reciprocal Rank Fusion and rank averaging, outputs top 25.
 No true-label evaluation (Phase6 has no labels).
 
 Usage:
-  python Phase6_QMOFinference/ensemble_phase6_predictions.py \\
-    --prediction_dirs Phase6_ml/extra_trees Phase6_ml/random_forest Phase6_knn \\
-    --nn_predictions Phase6_QMOFinference/Processed-data/inference_results/inference_predictions.csv \\
-    --output_dir Phase6_QMOFinference/Processed-data/inference_results \\
+  python discovery/ensemble_phase6_predictions.py \\
+    --prediction_dirs data/phase6/ml_predictions/extra_trees data/phase6/ml_predictions/random_forest \\
+    --nn_predictions experiments/exp364_fulltune/inference_predictions.csv \\
+    --output_dir data/phase6/inference_results \\
     --top_k 25
 """
 

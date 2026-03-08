@@ -55,8 +55,8 @@ mkdir -p logs
 # ★ EDIT THESE VARIABLES TO CUSTOMIZE YOUR ENSEMBLE ★
 # =============================================================================
 
-# Which ML methods to include (must have inference_predictions.csv in
-# data/phase6/discovery_output/individual/<method>/)
+# Which ML methods to include (must have test_predictions.csv or
+# inference_predictions.csv in data/phase6/ml_predictions/<method>/)
 ML_MODELS="extra_trees smote_extra_trees smote_random_forest"
 
 # Which NN experiments to include (must have inference_predictions.csv in
@@ -79,14 +79,20 @@ COMBO_PARTS=""
 
 echo "  ML models:"
 for m in $ML_MODELS; do
-    d="$PHASE6_DATA/discovery_output/individual/$m"
-    if [ -f "$d/inference_predictions.csv" ]; then
+    d="$PHASE6_DATA/ml_predictions/$m"
+    csv=""
+    if [ -f "$d/test_predictions.csv" ]; then
+        csv="$d/test_predictions.csv"
+    elif [ -f "$d/inference_predictions.csv" ]; then
+        csv="$d/inference_predictions.csv"
+    fi
+    if [ -n "$csv" ]; then
         PRED_DIRS="$PRED_DIRS $d"
         COMBO_PARTS="${COMBO_PARTS}_${m}"
-        echo "    [OK]   $m"
+        echo "    [OK]   $m ($(basename $csv))"
     else
-        echo "    [MISS] $m — no inference_predictions.csv found"
-        echo "           Expected at: $d/inference_predictions.csv"
+        echo "    [MISS] $m — no predictions found"
+        echo "           Expected at: $d/test_predictions.csv"
         echo "           Run ML inference first (06_run_discovery.sh or run_phase6_ml_only.sh)"
     fi
 done
