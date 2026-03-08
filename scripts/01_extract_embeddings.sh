@@ -1,0 +1,70 @@
+#!/bin/bash
+#SBATCH --job-name=embeddings
+#SBATCH --output=logs/01_embeddings_%j.out
+#SBATCH --error=logs/01_embeddings_%j.err
+#SBATCH --partition=ai
+#SBATCH --account=ai
+#SBATCH --qos=ai
+#SBATCH --gres=gpu:1
+#SBATCH --time=04:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
+
+# =============================================================================
+# STEP 1: Extract Pretrained Embeddings & Create Data Splits
+# =============================================================================
+#
+# This step:
+#   1a. Extracts 768-dim CLS embeddings from the pretrained MOFTransformer
+#       for ALL MOFs in the dataset (no fine-tuning — raw pretrained features).
+#       Output: embeddings_pretrained.npz
+#
+#   1b. Creates embedding-informed train/val/test splits using cosine similarity
+#       in the 768-dim space. Strategy D (farthest-point coverage) ensures every
+#       val/test positive has a structurally similar training positive.
+#       Output: splits/strategy_d_farthest_point/{train,val,test}_bandgaps_regression.json
+#
+# PREREQUISITES:
+#   - MOF structure files (.grid, .griddata16, .graphdata) in data/raw/
+#   - Label JSON files (bandgap values per CIF ID)
+#   - moftransformer installed with pretrained weights
+#
+# USAGE:
+#   sbatch scripts/01_extract_embeddings.sh
+# =============================================================================
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+load_modules
+cd "$BASE_DIR"
+mkdir -p logs "$DATA_DIR/embeddings" "$DATA_DIR/splits"
+
+# ---- Step 1a: Extract pretrained embeddings ---------------------------------
+section "STEP 1a: EXTRACT PRETRAINED EMBEDDINGS"
+
+python data_preparation/analyze_embeddings.py \
+    --data_dir "$DATA_DIR/raw" \
+    --output_dir "$DATA_DIR/embeddings"
+
+echo "  Output: $DATA_DIR/embeddings/embeddings_pretrained.npz"
+
+# ---- Step 1b: Create embedding-informed splits ------------------------------
+section "STEP 1b: CREATE EMBEDDING-INFORMED SPLITS (Strategy D)"
+
+python data_preparation/embedding_split.py \
+    --embeddings_path "$DATA_DIR/embeddings/embeddings_pretrained.npz" \
+    --output_dir "$DATA_DIR/splits"
+
+echo "  Output: $DATA_DIR/splits/strategy_d_farthest_point/"
+
+# ---- Step 1c: Fix symlinks (if structure files use symlinks) ----------------
+section "STEP 1c: REPAIR SPLIT SYMLINKS"
+
+python data_preparation/repair_split_symlinks.py \
+    --splits_dir "$DATA_DIR/splits/strategy_d_farthest_point" \
+    --data_dir "$DATA_DIR/raw"
+
+section "STEP 1 COMPLETE"
+echo "  Embeddings: $DATA_DIR/embeddings/embeddings_pretrained.npz"
+echo "  Splits:     $DATA_DIR/splits/strategy_d_farthest_point/"
