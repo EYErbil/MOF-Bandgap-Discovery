@@ -68,6 +68,16 @@ This repository implements a complete, reproducible pipeline for screening Metal
 
 - **Ensemble (Step 4):** Combines all models using Reciprocal Rank Fusion (RRF). Each model produces a ranked list of MOFs. RRF merges these lists by giving high scores to MOFs ranked highly by *multiple* models, without requiring the raw scores to be on the same scale.
 
+**Why two phases — validation then discovery:**
+
+The pipeline has two distinct stages with different goals:
+
+1. **Validation on labeled data (Steps 1–5):** We have ~6,000 MOFs with known DFT-computed bandgaps. We train models, then evaluate ensembles on a held-out test set where we *know* which MOFs are truly low-bandgap. The recall metrics and heatmaps from this phase prove that our ensemble can reliably push true low-bandgap MOFs to the top of a ranked list. This is the evidence that the models actually work — without it, deploying them on new data would be unjustified.
+
+2. **Discovery on unlabeled data (Step 6):** Once validated, we deploy the ensemble on a much larger set of MOFs whose bandgaps are unknown. The output is an enriched shortlist — the top 25, 50, or 100 candidates most likely to be low-bandgap — ranked by consensus across all models. Computing a MOF's true bandgap via DFT typically costs hours to days of CPU time per structure. By pre-screening thousands of candidates down to a high-confidence shortlist, the ensemble reduces the number of expensive DFT calculations by orders of magnitude while concentrating discovery on the structures most likely to be electronically interesting (conductive, narrow-gap semiconductor, photocatalytic, etc.).
+
+In short: Steps 1–5 answer *"can we find the needles in the haystack?"* using ground truth. Step 6 answers *"where are the needles in a new haystack?"* using the validated models.
+
 ---
 
 ## Repository Structure
@@ -448,6 +458,30 @@ sbatch scripts/optional/run_phase6_ensemble_custom.sh
 ```
 
 These are subsets of `06_run_discovery.sh` for when you need more control.
+
+---
+
+### What the Results Mean
+
+**From the labeled split (Steps 2–5):**
+
+The ensemble and individual models are evaluated on a test set where every MOF has a known DFT-computed bandgap. The key outputs are:
+
+- **Recall@K heatmaps** — for each model and ensemble, what fraction of the true low-bandgap MOFs (bandgap < 1.0 eV) appear in the top K predictions? A high recall@25 means the model pushes real positives to the very top of its ranked list. The heatmap across all models and ensemble methods shows exactly which combinations are best at recovering known positives.
+- **Complementarity analysis** — which MOFs does each model *uniquely* discover? If Model A finds 8 out of 10 positives and Model B finds a different 8 out of 10, their ensemble may find 10 out of 10. The report quantifies this overlap.
+- **Confusion matrices and precision/recall curves** — standard classification diagnostics on the binary "low-bandgap vs. not" task, so you can characterize false positive rates and model confidence.
+
+These results establish **trust in the ensemble** before deploying it on unknown data. If recall@50 on the labeled test set is, say, 80%, you have concrete evidence that the models rank true positives highly — and can expect similar enrichment on new data drawn from the same chemical space.
+
+**From unlabeled discovery (Step 6):**
+
+When the validated ensemble is applied to new MOFs with unknown bandgaps, there is no ground truth to compute recall against. Instead, the outputs focus on **consensus and confidence**:
+
+- **`top25_for_DFT_rrf.txt`** — the 25 MOFs ranked highest by the RRF ensemble. These are the structures where multiple independent models agree: "this MOF is very likely low-bandgap." This is the shortlist to prioritize for DFT validation.
+- **Agreement heatmaps** — which models agree on which candidates? A MOF flagged by 6 out of 7 models is a stronger candidate than one flagged by 2. The heatmap makes this visible at a glance.
+- **Per-model rankings** — individual model predictions are preserved so researchers can inspect whether a candidate is favored primarily by structural-similarity classifiers, by the regression NN, or by both.
+
+The practical outcome: instead of running DFT on all N thousand candidate MOFs (each calculation costing hours to days of compute time), you run DFT on 25–100 high-confidence candidates selected by the ensemble. This focuses expensive computational resources on the structures most likely to exhibit the target property — low bandgap, and by extension, potential conductivity, photocatalytic activity, or suitability for electronic device integration.
 
 ---
 
