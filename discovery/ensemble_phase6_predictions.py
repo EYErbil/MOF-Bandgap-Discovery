@@ -8,10 +8,10 @@ applies Reciprocal Rank Fusion and rank averaging, outputs top 25.
 No true-label evaluation (Phase6 has no labels).
 
 Usage:
-  python discovery/ensemble_phase6_predictions.py \\
-    --prediction_dirs data/phase6/ml_predictions/extra_trees data/phase6/ml_predictions/random_forest \\
-    --nn_predictions experiments/exp364_fulltune/inference_predictions.csv \\
-    --output_dir data/phase6/inference_results \\
+  python Phase6_QMOFinference/ensemble_phase6_predictions.py \\
+    --prediction_dirs Phase6_ml/extra_trees Phase6_ml/random_forest Phase6_knn \\
+    --nn_predictions Phase6_QMOFinference/Processed-data/inference_results/inference_predictions.csv \\
+    --output_dir Phase6_QMOFinference/Processed-data/inference_results \\
     --top_k 25
 """
 
@@ -142,6 +142,57 @@ def rank_averaging(models, test_cids, lower_is_better=True):
             cid_rank_sum[cid] += ranks[i]
     n_models = len(models)
     return {cid: cid_rank_sum[cid] / n_models for cid in test_cids}
+
+
+def infer_model_type(csv_path):
+    """Detect model type (NN / ML) from the 'mode' column of a predictions CSV."""
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            mode = (row.get("mode") or "").strip().lower()
+            if mode:
+                return "NN" if mode == "regression" else "ML"
+    return "ML"  # default
+
+
+def type_balanced_rrf(models, test_cids, model_types, k=60):
+    """
+    Two-stage RRF for type-balanced ensemble.
+
+    Stage 1: RRF within each model type (NN, ML) independently.
+    Stage 2: RRF across the 2 type-level scores (equal weight per type).
+
+    This ensures each model *family* contributes 50 %, regardless of how
+    many individual models exist in that family (e.g. 3 NN vs 2 ML).
+
+    Parameters
+    ----------
+    models : dict[str, dict[str, float]]
+        {model_name: {cid: score}} — all scores lower-is-better.
+    test_cids : list[str]
+    model_types : dict[str, str]
+        {model_name: 'NN' | 'ML'}
+    k : int
+        RRF smoothing constant.
+    """
+    groups = defaultdict(dict)
+    for name, scores in models.items():
+        t = model_types.get(name, "ML")
+        groups[t][name] = scores
+
+    if len(groups) < 2:
+        # Only one type present — fall back to plain RRF
+        return reciprocal_rank_fusion(models, test_cids, k=k, lower_is_better=True)
+
+    # Stage 1: within-type RRF
+    type_scores = {}
+    for t, grp in groups.items():
+        type_scores[t] = reciprocal_rank_fusion(grp, test_cids, k=k,
+                                                lower_is_better=True)
+
+    # Stage 2: across-type RRF (each type = 1 vote)
+    return reciprocal_rank_fusion(type_scores, test_cids, k=k,
+                                  lower_is_better=True)
 
 
 def main():

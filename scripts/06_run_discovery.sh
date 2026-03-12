@@ -22,7 +22,7 @@
 #   6b. Run ML inference (load saved sklearn models, score new embeddings)
 #   6c. Run NN inference (load checkpoints, forward pass on structures)
 #   6d. Ensemble all predictions → consensus top-25 for DFT
-#   6e. Agreement analysis (which MOFs appear in multiple models' top-K?)
+#   6e. Agreement analysis + per-model evaluation + type-group sub-ensembles
 #
 # CONFIGURATION:
 #   Edit NN_EXPERIMENTS and ML_METHODS below to match your trained models.
@@ -34,8 +34,14 @@
 #     └── inference_predictions.csv  — All predictions
 #   phase6/ensemble_report/
 #     ├── phase6_ensemble_report.md  — Full report
-#     ├── agreement_heatmap_top25.png
-#     └── ...
+#     ├── agreement_heatmap_top25.png — Readable labels (smart abbreviation)
+#     ├── singles/                   — Per-model individual rankings
+#     ├── nn_only_*/                 — NN-only sub-ensemble results
+#     └── ml_only_*/                 — ML-only sub-ensemble results
+#
+# OPTIONAL FOLLOW-UP SCRIPTS:
+#   sbatch scripts/optional/run_phase6_ensemble_v2.sh       — Cross-type pairs + type-balanced RRF
+#   sbatch scripts/optional/run_phase6_model_comparison.sh  — UMAP NN vs ML investigation
 #
 # PREREQUISITES:
 #   - Steps 02-03 completed (trained models exist)
@@ -60,10 +66,12 @@ TOP_K=25
 NN_EXPERIMENTS="exp364_fulltune exp370_seed2 exp371_seed3"
 
 # ML methods to include (subdirs of embedding_classifiers with model.joblib)
-ML_METHODS="extra_trees random_forest logistic_regression smote_extra_trees"
+# Default: the two SMOTE-based classifiers that performed best in ensemble ablation.
+# To include more, add method names separated by spaces (e.g., "smote_extra_trees smote_random_forest extra_trees").
+ML_METHODS="smote_extra_trees smote_random_forest"
 
-# Include kNN? (1=yes, 0=no)
-USE_KNN=1
+# Include kNN? (1=yes, 0=no). Set to 0 unless kNN predictions exist for Phase6.
+USE_KNN=0
 
 # =============================================================================
 # STEP 6a: Extract Phase6 embeddings
@@ -163,7 +171,13 @@ section "STEP 6e: ENSEMBLE REPORT"
 python discovery/phase6_ensemble_report.py \
     --base_dir "$BASE_DIR" \
     --auto_discover \
+    --include_singles \
+    --type_groups \
     --output_dir "$PHASE6_DATA/ensemble_report"
+
+# NOTE: For the full enhanced report with cross-type pair analysis, run:
+#   sbatch scripts/optional/run_phase6_ensemble_v2.sh
+# That adds --cross_type_pairs (all NN x ML pair combos) and type_balanced_rrf.
 
 section "STEP 6 COMPLETE — PHASE6 DISCOVERY"
 echo ""
@@ -171,3 +185,8 @@ echo "  Top $TOP_K candidates for DFT:"
 echo "    RRF:      $PHASE6_DATA/inference_results/top${TOP_K}_for_DFT_rrf.txt"
 echo "    Rank avg: $PHASE6_DATA/inference_results/top${TOP_K}_for_DFT_rank_avg.txt"
 echo "  Ensemble report: $PHASE6_DATA/ensemble_report/phase6_ensemble_report.md"
+echo ""
+echo "  For NN vs ML investigation, run:"
+echo "    sbatch scripts/optional/run_phase6_model_comparison.sh"
+echo "  For enhanced report (cross-type pairs + type-balanced RRF):"
+echo "    sbatch scripts/optional/run_phase6_ensemble_v2.sh"

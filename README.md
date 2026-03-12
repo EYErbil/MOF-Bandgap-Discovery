@@ -12,25 +12,26 @@ This repository implements a complete, reproducible pipeline for screening Metal
 
 1. [Pipeline Overview](#pipeline-overview)
 2. [Repository Structure](#repository-structure)
-3. [Prerequisites](#prerequisites)
-4. [Installation](#installation)
-5. [Quick Start (6 Commands)](#quick-start-6-commands)
-6. [Detailed Walkthrough](#detailed-walkthrough)
+3. [Dataset Statistics](#dataset-statistics)
+4. [Prerequisites](#prerequisites)
+5. [Installation](#installation)
+6. [Quick Start (6 Commands)](#quick-start-6-commands)
+7. [Detailed Walkthrough](#detailed-walkthrough)
    - [Step 1: Extract Embeddings & Create Splits](#step-1-extract-embeddings--create-splits)
    - [Step 2: Train Neural Network Regressors](#step-2-train-neural-network-regressors)
    - [Step 3: Train ML Classifiers & kNN Baselines](#step-3-train-ml-classifiers--knn-baselines)
    - [Step 4: Exhaustive Ensemble Ablation](#step-4-exhaustive-ensemble-ablation)
    - [Step 5: Generate Report](#step-5-generate-report)
    - [Step 6: Discovery on New MOFs](#step-6-discovery-on-new-mofs-optional)
-7. [Customizing Experiments (Creating Your Own)](#customizing-experiments)
-8. [Custom Ensembles (Choosing Your Own Model Combinations)](#custom-ensembles)
-9. [Split Modification Workflow](#split-modification-workflow)
-10. [Optional Analysis Scripts](#optional-analysis-scripts)
-11. [Key Design Decisions](#key-design-decisions)
-12. [Output Artifacts](#output-artifacts)
-13. [Troubleshooting](#troubleshooting)
-14. [Citation](#citation)
-15. [License](#license)
+8. [Customizing Experiments (Creating Your Own)](#customizing-experiments)
+9. [Custom Ensembles (Choosing Your Own Model Combinations)](#custom-ensembles)
+10. [Split Modification Workflow](#split-modification-workflow)
+11. [Optional Analysis Scripts](#optional-analysis-scripts)
+12. [Key Design Decisions](#key-design-decisions)
+13. [Output Artifacts](#output-artifacts)
+14. [Troubleshooting](#troubleshooting)
+15. [Citation](#citation)
+16. [License](#license)
 
 ---
 
@@ -129,8 +130,9 @@ MOF-Bandgap-Discovery/
 ├── discovery/                            # Phase6: inference on unlabeled MOFs
 │   ├── run_inference_from_cwd.py         #   NN inference from checkpoint
 │   ├── phase6_discovery.py               #   Per-model + ensemble ranking
-│   ├── ensemble_phase6_predictions.py    #   RRF + rank averaging on new data
-│   ├── phase6_ensemble_report.py         #   Full discovery report + agreement
+│   ├── ensemble_phase6_predictions.py    #   RRF + type-balanced RRF on new data
+│   ├── phase6_ensemble_report.py         #   Discovery report + agreement + singles
+│   ├── plot_phase6_model_comparison.py   #   NN vs ML UMAP investigation
 │   └── collect_inference_structures.sh   #   Gather MOF files from scattered dirs
 │
 ├── scripts/                              # SLURM pipeline orchestration
@@ -148,7 +150,9 @@ MOF-Bandgap-Discovery/
 │       ├── run_screening.sh              #   Structural screening
 │       ├── run_phase6_ml_only.sh         #   Phase6 ML inference only (no GPU)
 │       ├── run_phase6_nn_only.sh         #   Phase6 NN inference only (GPU)
-│       └── run_phase6_ensemble_custom.sh #   Phase6 custom model combination
+│       ├── run_phase6_ensemble_custom.sh #   Phase6 custom model combination
+│       ├── run_phase6_ensemble_v2.sh     #   Enhanced report: type-balanced + cross-type
+│       └── run_phase6_model_comparison.sh#   NN vs ML UMAP investigation
 │
 ├── tools/                                # Split modification utilities
 │   ├── move_test_negatives_to_val.py     #   Move samples between splits
@@ -160,7 +164,28 @@ MOF-Bandgap-Discovery/
 ```
 
 ---
+## Dataset Statistics
 
+The pipeline uses data from the [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF) (Rosen et al., 2021).
+
+| Dataset | MOF count | Purpose |
+|---------|-----------|--------|
+| **Labeled set** | ~6,000 MOFs | DFT-computed PBE bandgaps — used for training + evaluation (Steps 1-5) |
+| **Phase6 (unlabeled)** | ~9,500 MOFs | Remaining QMOF structures without labels — used for discovery (Step 6) |
+
+**Labeled set split** (Strategy D farthest-point coverage):
+
+| Split | Total | Positives (bandgap < 1.0 eV) | Positive rate |
+|-------|-------|------------------------------|---------------|
+| Train | ~4,200 | ~650 | ~15% |
+| Val   | ~600  | ~95  | ~16% |
+| Test  | ~1,200 | ~190 | ~16% |
+
+> The exact counts depend on the QMOF version used. The positive class (< 1.0 eV) is a small minority (~15-16%), making this a retrieval/ranking problem rather than a balanced classification task.
+
+**Phase6 data sourcing:** The ~9,500 Phase6 structures are QMOF MOFs whose bandgaps have NOT been computed via DFT at the PBE level. They are preprocessed into MOFTransformer format (`.grid`, `.griddata16`, `.graphdata`) using the same pipeline as the labeled set. A placeholder JSON (`test_bandgaps_regression.json`) maps each CIF ID to `0.0` since the true bandgap is unknown.
+
+---
 ## Prerequisites
 
 | Requirement | Details |
@@ -177,7 +202,7 @@ MOF-Bandgap-Discovery/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-username>/MOF-Bandgap-Discovery.git
+git clone https://github.com/eerbil/MOF-Bandgap-Discovery.git
 cd MOF-Bandgap-Discovery
 
 # 2. Create a virtual environment
@@ -205,6 +230,8 @@ export MODULE_LOADS="cuda/12.3 cudnn/8.9.5 python/3.9.5"  # Your module system
 ```
 
 All other paths (data, experiments, results) are automatically derived from `BASE_DIR`.
+
+> **SBATCH headers:** Each SLURM script also has `#SBATCH --partition=ai --account=ai --qos=ai` at the top. Since SBATCH directives are parsed before bash runs, these cannot reference shell variables. If your cluster uses different partition names or does not require `--account`/`--qos`, edit the `#SBATCH` lines at the top of each script in `scripts/` to match your environment.
 
 ---
 
@@ -432,12 +459,12 @@ Applies ALL trained models to a **new, unlabeled** MOF dataset and produces a co
 | 6b | Score with saved sklearn models | `data/phase6/ml_predictions/<method>/test_predictions.csv` |
 | 6c | Run NN forward pass from checkpoints | `experiments/<exp>/inference_predictions.csv` |
 | 6d | Ensemble all predictions → consensus top-25 | `data/phase6/inference_results/top25_for_DFT_rrf.txt` |
-| 6e | Agreement analysis across models | `data/phase6/ensemble_report/phase6_ensemble_report.md` |
+| 6e | Agreement analysis + per-model evaluation + type-group sub-ensembles | `data/phase6/ensemble_report/` |
 
 **Configuration** (edit at the top of the script):
 ```bash
 NN_EXPERIMENTS="exp364_fulltune exp370_seed2 exp371_seed3"  # Which NN models to use
-ML_METHODS="extra_trees random_forest logistic_regression smote_extra_trees"  # Which ML models
+ML_METHODS="smote_extra_trees smote_random_forest"           # Which ML models (SMOTE pair = best)
 TOP_K=25  # How many top candidates to report
 ```
 
@@ -665,6 +692,33 @@ sbatch scripts/optional/run_phase6_nn_only.sh
 # Phase6 — build a custom ensemble from hand-picked models
 # Edit ML_MODELS and NN_EXPERIMENTS at the top of the script first
 sbatch scripts/optional/run_phase6_ensemble_custom.sh
+
+# Phase6 — enhanced ensemble report (v2): adds cross-type NN×ML pairs +
+# type-balanced RRF that ensures 50/50 NN/ML balance regardless of model count
+sbatch scripts/optional/run_phase6_ensemble_v2.sh
+
+# Phase6 — NN vs ML model comparison: UMAP visualization showing where
+# each model’s top-K candidates sit in embedding space + Jaccard overlap
+sbatch scripts/optional/run_phase6_model_comparison.sh
+```
+
+### Model Type Imbalance (NN Domination)
+
+When ensembling 3 NN models + 2 ML classifiers with standard RRF, the NN models can dominate the vote (3-vs-2 majority). In our experiments, NN and ML models had **zero top-25 overlap** (Jaccard = 0.0) — they discover completely different candidates.
+
+To address this, the pipeline provides:
+
+| Tool | What it does |
+|------|--------------|
+| `--type_groups` flag | Automatically creates NN-only and ML-only sub-ensembles so you can inspect what each model *type* recommends independently |
+| `--include_singles` flag | Evaluates every model individually (per-model ranked lists and top-K files) before ensembling |
+| `type_balanced_rrf` method | 2-stage RRF: first aggregates within each type (NN consensus, ML consensus), then merges the two type-level scores with equal weight — guaranteeing 50/50 balance |
+| `--cross_type_pairs` flag | Tests all NN×ML pair combinations (3×2 = 6 pairs) to find which specific cross-type pair has best agreement |
+| `plot_phase6_model_comparison.py` | UMAP investigation: visualizes where NN vs ML top-K sit in embedding space, computes pairwise Jaccard, and produces a detailed text report |
+
+The default `06_run_discovery.sh` enables `--include_singles` and `--type_groups`. For the full analysis (cross-type pairs + type-balanced RRF), run the enhanced report:
+```bash
+sbatch scripts/optional/run_phase6_ensemble_v2.sh
 ```
 
 ---
@@ -681,6 +735,7 @@ sbatch scripts/optional/run_phase6_ensemble_custom.sh
 | **Bandgap < 1.0 eV threshold** | Conventional threshold for identifying potentially conductive or narrow-gap semiconductor MOFs. MOFs below this threshold are candidates for electronic applications, photocatalysis, and sensor design. |
 | **Huber loss for regression** | The QMOF bandgap distribution has a long tail of high-bandgap MOFs (some > 8 eV). Huber loss caps the gradient for large errors, preventing these outliers from dominating training. |
 | **Early stopping on Spearman ρ** | We care about *ranking* MOFs correctly (top-K discovery), not predicting exact bandgap values. Spearman ρ measures rank correlation, aligning the early stopping criterion with our actual goal. |
+| **Type-balanced RRF** | When ensembling different model *types* (e.g., 3 NNs + 2 ML classifiers), standard RRF gives the majority type more votes. Type-balanced RRF first aggregates within each type, then merges across types with equal weight — preventing any single type from dominating the final ranking. |
 
 ---
 
@@ -745,7 +800,10 @@ data/phase6/
 │   └── inference_predictions.csv             # All predictions
 └── ensemble_report/
     ├── phase6_ensemble_report.md             # Full report
-    └── agreement_heatmap_top25.png           # Model agreement visualization
+    ├── agreement_heatmap_top25.png           # Model agreement (readable labels)
+    ├── singles/                              # Per-model individual rankings
+    ├── nn_only_*/                            # NN-only sub-ensemble results
+    └── ml_only_*/                            # ML-only sub-ensemble results
 ```
 
 ---
@@ -775,9 +833,9 @@ If you use this code in your research, please cite:
   title  = {MOF-Bandgap-Discovery: Multi-Model Ensemble Learning for
             Low-Bandgap Metal--Organic Framework Screening},
   author = {Erbil, Ege Yi\u011fit},
-  year   = {2025},
+  year   = {2026},
   note   = {Ko\c{c} University},
-  url    = {https://github.com/<your-username>/MOF-Bandgap-Discovery}
+  url    = {https://github.com/eerbil/MOF-Bandgap-Discovery}
 }
 ```
 
