@@ -23,6 +23,7 @@ This repository implements a complete, reproducible pipeline for screening Metal
    - [Step 4: Exhaustive Ensemble Ablation](#step-4-exhaustive-ensemble-ablation)
    - [Step 5: Generate Report](#step-5-generate-report)
    - [Step 6: Discovery on New MOFs](#step-6-discovery-on-new-mofs-optional)
+   - [Step 7: DFT Candidate Nomination](#step-7-dft-candidate-nomination-multi-perspective-consensus)
 8. [Customizing Experiments (Creating Your Own)](#customizing-experiments)
 9. [Custom Ensembles (Choosing Your Own Model Combinations)](#custom-ensembles)
 10. [Split Modification Workflow](#split-modification-workflow)
@@ -57,7 +58,10 @@ This repository implements a complete, reproducible pipeline for screening Metal
  │  STEP 5  Generate comprehensive analysis report (15+ figures)            │
  │     ▼                                                                     │
  │  STEP 6  Phase6 Discovery — Inference on new unlabeled MOFs              │
- │          → Consensus top-25 candidates for DFT validation                │
+ │     │    → Consensus top-25 candidates for DFT validation                │
+ │     ▼                                                                     │
+ │  STEP 7  DFT Candidate Nomination — 28-Perspective Consensus Jury        │
+ │          → Confidence-tiered top-25 for DFT calculations                 │
  └───────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -133,6 +137,7 @@ MOF-Bandgap-Discovery/
 │   ├── ensemble_phase6_predictions.py    #   RRF + type-balanced RRF on new data
 │   ├── phase6_ensemble_report.py         #   Discovery report + agreement + singles
 │   ├── plot_phase6_model_comparison.py   #   NN vs ML UMAP investigation
+│   ├── nominate_dft_candidates.py        #   Step 7: 28-perspective DFT nomination
 │   └── collect_inference_structures.sh   #   Gather MOF files from scattered dirs
 │
 ├── scripts/                              # SLURM pipeline orchestration
@@ -152,7 +157,8 @@ MOF-Bandgap-Discovery/
 │       ├── run_phase6_nn_only.sh         #   Phase6 NN inference only (GPU)
 │       ├── run_phase6_ensemble_custom.sh #   Phase6 custom model combination
 │       ├── run_phase6_ensemble_v2.sh     #   Enhanced report: type-balanced + cross-type
-│       └── run_phase6_model_comparison.sh#   NN vs ML UMAP investigation
+│       ├── run_phase6_model_comparison.sh#   NN vs ML UMAP investigation
+│       └── run_dft_nomination.sh         #   Step 7: 28-perspective DFT nomination
 │
 ├── tools/                                # Split modification utilities
 │   ├── move_test_negatives_to_val.py     #   Move samples between splits
@@ -202,7 +208,7 @@ The pipeline uses data from the [QMOF Database](https://github.com/Andrew-S-Rose
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/eerbil/MOF-Bandgap-Discovery.git
+git clone https://github.com/EYErbil/MOF-Bandgap-Discovery.git
 cd MOF-Bandgap-Discovery
 
 # 2. Create a virtual environment
@@ -488,6 +494,110 @@ These are subsets of `06_run_discovery.sh` for when you need more control.
 
 ---
 
+### Step 7: DFT Candidate Nomination (Multi-Perspective Consensus)
+
+```bash
+sbatch scripts/optional/run_dft_nomination.sh
+```
+
+After Step 6 produces per-model predictions, Step 7 systematically evaluates **28 balanced ensemble perspectives** and selects the final top-25 structures for DFT bandgap calculation using a **confidence-tiered consensus vote**.
+
+#### Why a 28-Perspective Jury?
+
+Step 6 already produces a consensus top-25 list by fusing all model predictions. But different fusion methods (RRF, rank averaging, type-balanced RRF) and different model subsets can yield meaningfully different rankings. A structure that appears in the top-25 of *one* particular ensemble might be an artifact of that specific fusion; a structure that appears across *21 out of 28* independent perspectives is a robust discovery.
+
+The 28-perspective jury tests every balanced model combination across multiple fusion methods. "Balanced" means every combination uses equal numbers of NN and ML models — this prevents the NN domination problem (Jaccard = 0.0 between NN and ML top-25 lists) that occurs when 3 NNs outvote 2 ML classifiers in unbalanced ensembles.
+
+#### Perspective Groups
+
+| Group | Composition | Fusion Method | Count | Rationale |
+|-------|------------|---------------|-------|-----------|
+| **A** | Individual models | Own scores | 5 | Baseline: what does each model alone recommend? |
+| **B** | 1 NN + 1 ML pairs | RRF (k=60) | 6 | All 3×2 cross-paradigm pairs via rank fusion |
+| **C** | 1 NN + 1 ML pairs | Rank Averaging | 6 | Same pairs, different fusion — tests robustness |
+| **D** | 2 NN + 2 ML quads | RRF | 3 | C(3,2)=3 NN pairs × 1 ML pair, rank fusion |
+| **E** | 2 NN + 2 ML quads | Rank Averaging | 3 | Same quads, different fusion |
+| **F** | 2 NN + 2 ML quads | Type-Balanced RRF | 3 | 2-stage RRF ensuring 50/50 type balance |
+| **G** | Full 3 NN + 2 ML | Type-Balanced RRF + Rank Avg | 2 | Global consensus with type balance |
+| | | **Total** | **28** | |
+
+**Score averaging is deliberately excluded**: normalizing NN regression bandgaps (eV) against ML classification probabilities (0–1) is unreliable. All fusion methods operate on ranks, not raw scores.
+
+#### Fusion Methods Explained
+
+- **Reciprocal Rank Fusion (RRF)**: `score(cid) = Σ 1/(k + rank_i)`, with k=60. Gives high scores to structures ranked highly by multiple models. Rank-based, so it handles heterogeneous score scales naturally.
+- **Rank Averaging**: `score(cid) = mean(rank_i)`. The simplest rank-based fusion — assigns each structure the average of its ranks across models.
+- **Type-Balanced RRF**: Two-stage process. Stage 1: RRF separately within each model type (NN consensus, ML consensus). Stage 2: RRF across the two type-level scores. This guarantees exactly 50/50 contribution from each model family, regardless of how many models are in each group.
+
+#### Confidence Tiers and Nomination Logic
+
+After all 28 perspectives produce their top-K rankings, vote counting determines how many perspectives place each structure in their top-K:
+
+| Tier | Threshold | Meaning |
+|------|-----------|---------|
+| **Tier 1** (Very High) | ≥ 75% votes (≥ 21/28) | Structure appears in the vast majority of perspectives |
+| **Tier 2** (High) | ≥ 50% votes (≥ 14/28) | Structure appears in at least half of perspectives |
+| **Tier 3** (Moderate) | ≥ 25% votes (≥ 7/28) | Structure appears in at least a quarter of perspectives |
+
+**Nomination algorithm**:
+1. Auto-include all Tier 1 + Tier 2 structures (highest confidence).
+2. If fewer than 25: fill from Tier 3 ordered by (votes descending, average rank ascending).
+3. If still fewer: fill from remaining structures by average rank ascending.
+4. If more than 25 at Tier 2: take the top 25 overall by (votes desc, avg rank asc).
+
+All thresholds (75%, 50%, 25%) and the target count (25) are CLI-configurable.
+
+#### Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--base_dir` | `.` | Phase6 working directory containing experiments/ and embedding_classifiers/ |
+| `--output_dir` | `DFT-subset-Nomination` | Output directory (relative to base_dir unless absolute) |
+| `--top_k` | `25` | Number of structures each perspective ranks, and the nomination target |
+| `--rrf_k` | `60` | RRF smoothing constant (standard value from the literature) |
+| `--tier1_pct` | `0.75` | Tier 1 threshold as a fraction of total perspectives |
+| `--tier2_pct` | `0.50` | Tier 2 threshold |
+| `--tier3_pct` | `0.25` | Tier 3 threshold |
+| `--skip_umap` | off | Skip UMAP visualization (faster; no umap-learn dependency) |
+
+#### Output Directory
+
+```
+DFT-subset-Nomination/
+├── FINAL_DFT_TOP25.txt             # ★ The 25 CIF IDs to submit for DFT
+├── FINAL_DFT_TOP25.csv             # With votes, tiers, avg rank, nomination reason
+├── full_consensus_ranking.csv      # All ~9,500 structures ranked by consensus
+├── nomination_report.md            # Full methodology + results as markdown
+├── perspective_summary.json        # Machine-readable perspective data (28 entries)
+├── individual_models/              # Per-model top-25 lists (5 files)
+├── balanced_ensembles/
+│   ├── pairs/                      # 1NN+1ML pair results (12 files: 6 RRF + 6 rank_avg)
+│   ├── quads/                      # 2NN+2ML quad results (9 files)
+│   └── full/                       # Full 3NN+2ML results (2 files)
+└── plots/                          # 7 publication-quality figures
+    ├── consensus_votes_barplot.png # Horizontal bar chart colored by tier
+    ├── consensus_heatmap.png       # Binary heatmap: nominees × 28 perspectives
+    ├── perspective_agreement_jaccard.png  # 28×28 Jaccard similarity
+    ├── nn_ml_agreement.png         # NN vs ML individual overlap with nominees
+    ├── acceptance_ratio.png        # Per-perspective acceptance ratio
+    ├── rank_stability_boxplot.png  # Rank variance across perspectives per nominee
+    └── umap_nominees.png           # UMAP of all MOFs with nominees highlighted
+```
+
+#### How to Interpret the Results
+
+- **`FINAL_DFT_TOP25.txt`**: The primary output. These 25 CIF IDs are the structures where the majority of 28 independent balanced perspectives agree: "this MOF is very likely low-bandgap." Submit these for DFT bandgap calculation.
+
+- **Tier distribution**: If all 25 nominees are Tier 1, the consensus is very strong — diverse model combinations consistently agree. If nominees span Tiers 1–3, the top ones are high-confidence and the bottom ones are gap-fillers.
+
+- **`consensus_heatmap.png`**: Each row is a structure, each column is one of the 28 perspectives. Green = that perspective includes the structure in its top-25. A fully green row means unanimous support; a patchy row means the structure is borderline.
+
+- **`rank_stability_boxplot.png`**: For each nominee, shows the distribution of its rank across all 28 perspectives. A tight box near rank 1 means the structure is consistently top-ranked; a wide box means some perspectives rank it much lower.
+
+- **`perspective_agreement_jaccard.png`**: Shows how much each perspective's top-25 overlaps with every other perspective's top-25. High intra-group similarity (e.g., all Quad-RRF perspectives mostly agree) and lower inter-group similarity (NN-only vs ML-only disagree) is the expected pattern that motivates balanced ensembles.
+
+---
+
 ### What the Results Mean
 
 **From the labeled split (Steps 2–5):**
@@ -700,7 +810,11 @@ sbatch scripts/optional/run_phase6_ensemble_v2.sh
 # Phase6 — NN vs ML model comparison: UMAP visualization showing where
 # each model’s top-K candidates sit in embedding space + Jaccard overlap
 sbatch scripts/optional/run_phase6_model_comparison.sh
-```
+# Step 7 — DFT Candidate Nomination: 28-perspective consensus jury
+# Evaluates all balanced model combinations across RRF, rank averaging,
+# and type-balanced RRF, then selects top-25 via confidence-tiered voting.
+# See Step 7 section above for full details.
+sbatch scripts/optional/run_dft_nomination.sh```
 
 ### Model Type Imbalance (NN Domination)
 
@@ -736,6 +850,7 @@ sbatch scripts/optional/run_phase6_ensemble_v2.sh
 | **Huber loss for regression** | The QMOF bandgap distribution has a long tail of high-bandgap MOFs (some > 8 eV). Huber loss caps the gradient for large errors, preventing these outliers from dominating training. |
 | **Early stopping on Spearman ρ** | We care about *ranking* MOFs correctly (top-K discovery), not predicting exact bandgap values. Spearman ρ measures rank correlation, aligning the early stopping criterion with our actual goal. |
 | **Type-balanced RRF** | When ensembling different model *types* (e.g., 3 NNs + 2 ML classifiers), standard RRF gives the majority type more votes. Type-balanced RRF first aggregates within each type, then merges across types with equal weight — preventing any single type from dominating the final ranking. |
+| **Multi-Perspective Consensus Nomination** | A single ensemble method can be sensitive to fusion choice or model subset. The 28-perspective jury tests all balanced combinations across three fusion methods, then selects candidates via confidence-tiered voting (Tier 1 ≥ 75%, Tier 2 ≥ 50%, Tier 3 ≥ 25%). Only balanced ensembles (equal NN:ML ratio) are used to avoid type domination. |
 
 ---
 
@@ -806,6 +921,30 @@ data/phase6/
     └── ml_only_*/                            # ML-only sub-ensemble results
 ```
 
+After Step 7 (DFT Candidate Nomination):
+
+```
+data/phase6/DFT-subset-Nomination/
+├── FINAL_DFT_TOP25.txt                       # ★ The 25 CIF IDs for DFT
+├── FINAL_DFT_TOP25.csv                       # Votes, tiers, avg rank per nominee
+├── full_consensus_ranking.csv                # All ~9,500 structures ranked
+├── nomination_report.md                      # Full methodology + results
+├── perspective_summary.json                  # Machine-readable (28 perspectives)
+├── individual_models/                        # Per-model top-25 lists
+├── balanced_ensembles/                       # Per-combo top-25 by group
+│   ├── pairs/                                # 12 files (B+C groups)
+│   ├── quads/                                # 9 files (D+E+F groups)
+│   └── full/                                 # 2 files (G group)
+└── plots/                                    # 7 publication-quality figures
+    ├── consensus_votes_barplot.png
+    ├── consensus_heatmap.png
+    ├── perspective_agreement_jaccard.png
+    ├── nn_ml_agreement.png
+    ├── acceptance_ratio.png
+    ├── rank_stability_boxplot.png
+    └── umap_nominees.png
+```
+
 ---
 
 ## Troubleshooting
@@ -835,7 +974,7 @@ If you use this code in your research, please cite:
   author = {Erbil, Ege Yi\u011fit},
   year   = {2026},
   note   = {Ko\c{c} University},
-  url    = {https://github.com/eerbil/MOF-Bandgap-Discovery}
+  url    = {https://github.com/EYErbil/MOF-Bandgap-Discovery}
 }
 ```
 
