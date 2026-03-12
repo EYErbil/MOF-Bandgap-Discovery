@@ -77,9 +77,9 @@ This repository implements a complete, reproducible pipeline for screening Metal
 
 The pipeline has two distinct stages with different goals:
 
-1. **Validation on labeled data (Steps 1–5):** We have ~6,000 MOFs with known DFT-computed bandgaps. We train models, then evaluate ensembles on a held-out test set where we *know* which MOFs are truly low-bandgap. The recall metrics and heatmaps from this phase prove that our ensemble can reliably push true low-bandgap MOFs to the top of a ranked list. This is the evidence that the models actually work — without it, deploying them on new data would be unjustified.
+1. **Validation on labeled data (Steps 1–5):** We have ~10,000 MOFs with known DFT-computed HSE bandgaps. The labeled set is heavily imbalanced: ~600 training examples with ~60 positives, ~600 validation with ~7 positives, and ~8,800 test with only ~9 positives. We train models, then evaluate ensembles on this large test set where we *know* which MOFs are truly low-bandgap. The recall metrics and heatmaps from this phase prove that our ensemble can reliably push true low-bandgap MOFs to the top of a ranked list. This is the evidence that the models actually work — without it, deploying them on new data would be unjustified.
 
-2. **Discovery on unlabeled data (Step 6):** Once validated, we deploy the ensemble on a much larger set of MOFs whose bandgaps are unknown. The output is an enriched shortlist — the top 25, 50, or 100 candidates most likely to be low-bandgap — ranked by consensus across all models. Computing a MOF's true bandgap via DFT typically costs hours to days of CPU time per structure. By pre-screening thousands of candidates down to a high-confidence shortlist, the ensemble reduces the number of expensive DFT calculations by orders of magnitude while concentrating discovery on the structures most likely to be electronically interesting (conductive, narrow-gap semiconductor, photocatalytic, etc.).
+2. **Discovery on unlabeled data (Step 6):** Once validated, we deploy the ensemble on a separate set of ~10,000 MOFs whose HSE bandgaps are unknown. The output is an enriched shortlist — the top 25, 50, or 100 candidates most likely to be low-bandgap — ranked by consensus across all models. Computing a MOF's true bandgap via DFT at the HSE level typically costs hours to days of CPU time per structure. By pre-screening thousands of candidates down to a high-confidence shortlist, the ensemble reduces the number of expensive DFT calculations by orders of magnitude while concentrating discovery on the structures most likely to be electronically interesting (conductive, narrow-gap semiconductor, photocatalytic, etc.).
 
 In short: Steps 1–5 answer *"can we find the needles in the haystack?"* using ground truth. Step 6 answers *"where are the needles in a new haystack?"* using the validated models.
 
@@ -172,24 +172,24 @@ MOF-Bandgap-Discovery/
 ---
 ## Dataset Statistics
 
-The pipeline uses data from the [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF) (Rosen et al., 2021).
+The pipeline uses **HSE-level** bandgap data from the [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF) (Rosen et al., 2021). HSE (Heyd–Scuseria–Ernzerhof) is a hybrid DFT functional that produces more accurate bandgap estimates than PBE, particularly for semiconductors and near-gap materials.
 
 | Dataset | MOF count | Purpose |
 |---------|-----------|--------|
-| **Labeled set** | ~6,000 MOFs | DFT-computed PBE bandgaps — used for training + evaluation (Steps 1-5) |
-| **Phase6 (unlabeled)** | ~9,500 MOFs | Remaining QMOF structures without labels — used for discovery (Step 6) |
+| **Labeled set** | ~10,000 MOFs | DFT-computed HSE bandgaps — used for training + evaluation (Steps 1-5) |
+| **Phase6 (unlabeled)** | ~10,000 MOFs | QMOF structures without HSE bandgaps — used for discovery (Step 6-7) |
 
 **Labeled set split** (Strategy D farthest-point coverage):
 
 | Split | Total | Positives (bandgap < 1.0 eV) | Positive rate |
 |-------|-------|------------------------------|---------------|
-| Train | ~4,200 | ~650 | ~15% |
-| Val   | ~600  | ~95  | ~16% |
-| Test  | ~1,200 | ~190 | ~16% |
+| Train | ~600  | ~60  | ~10% |
+| Val   | ~600  | ~7   | ~1%  |
+| Test  | ~8,800 | ~9  | ~0.1% |
 
-> The exact counts depend on the QMOF version used. The positive class (< 1.0 eV) is a small minority (~15-16%), making this a retrieval/ranking problem rather than a balanced classification task.
+> **Extreme class imbalance.** The positive class (HSE bandgap < 1.0 eV) represents only ~76 structures across all splits. The training set has ~60 positives out of ~600 (~10%), but the test set has only ~9 positives out of ~8,800 (~0.1%). This makes the task a **needle-in-a-haystack retrieval problem**: the models must push a handful of true positives to the very top of a list containing thousands of negatives. This is why the pipeline evaluates **recall@K** (how many of the 9 test positives appear in the top K predictions) rather than accuracy, and why ensemble fusion is critical — a single model may miss 2-3 of the 9 positives, but diverse models often recover different ones.
 
-**Phase6 data sourcing:** The ~9,500 Phase6 structures are QMOF MOFs whose bandgaps have NOT been computed via DFT at the PBE level. They are preprocessed into MOFTransformer format (`.grid`, `.griddata16`, `.graphdata`) using the same pipeline as the labeled set. A placeholder JSON (`test_bandgaps_regression.json`) maps each CIF ID to `0.0` since the true bandgap is unknown.
+**Phase6 data sourcing:** The ~10,000 Phase6 structures are QMOF MOFs whose bandgaps have NOT been computed at the HSE level. They are preprocessed into MOFTransformer format (`.grid`, `.griddata16`, `.graphdata`) using the same pipeline as the labeled set. A placeholder JSON (`test_bandgaps_regression.json`) maps each CIF ID to `0.0` since the true bandgap is unknown.
 
 ---
 ## Prerequisites
@@ -518,7 +518,7 @@ The 28-perspective jury tests every balanced model combination across multiple f
 | **D** | 2 NN + 2 ML quads | RRF | 3 | C(3,2)=3 NN pairs × 1 ML pair, rank fusion |
 | **E** | 2 NN + 2 ML quads | Rank Averaging | 3 | Same quads, different fusion |
 | **F** | 2 NN + 2 ML quads | Type-Balanced RRF | 3 | 2-stage RRF ensuring 50/50 type balance |
-| **G** | Full 3 NN + 2 ML | Type-Balanced RRF + Rank Avg | 2 | Global consensus with type balance |
+| **G** | Full 3 NN + 2 ML | Type-Balanced RRF + Type-Balanced Rank Avg | 2 | Global consensus with type balance |
 | | | **Total** | **28** | |
 
 **Score averaging is deliberately excluded**: normalizing NN regression bandgaps (eV) against ML classification probabilities (0–1) is unreliable. All fusion methods operate on ranks, not raw scores.
@@ -566,7 +566,7 @@ All thresholds (75%, 50%, 25%) and the target count (25) are CLI-configurable.
 DFT-subset-Nomination/
 ├── FINAL_DFT_TOP25.txt             # ★ The 25 CIF IDs to submit for DFT
 ├── FINAL_DFT_TOP25.csv             # With votes, tiers, avg rank, nomination reason
-├── full_consensus_ranking.csv      # All ~9,500 structures ranked by consensus
+├── full_consensus_ranking.csv      # All ~10,000 structures ranked by consensus
 ├── nomination_report.md            # Full methodology + results as markdown
 ├── perspective_summary.json        # Machine-readable perspective data (28 entries)
 ├── individual_models/              # Per-model top-25 lists (5 files)
@@ -927,7 +927,7 @@ After Step 7 (DFT Candidate Nomination):
 data/phase6/DFT-subset-Nomination/
 ├── FINAL_DFT_TOP25.txt                       # ★ The 25 CIF IDs for DFT
 ├── FINAL_DFT_TOP25.csv                       # Votes, tiers, avg rank per nominee
-├── full_consensus_ranking.csv                # All ~9,500 structures ranked
+├── full_consensus_ranking.csv                # All ~10,000 structures ranked
 ├── nomination_report.md                      # Full methodology + results
 ├── perspective_summary.json                  # Machine-readable (28 perspectives)
 ├── individual_models/                        # Per-model top-25 lists

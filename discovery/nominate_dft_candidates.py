@@ -26,7 +26,7 @@ Perspective groups (28 total)
   D  2NN + 2ML quads, RRF   3  (C(3,2) NN pairs x 1 ML pair)
   E  2NN + 2ML quads, rank_avg  3
   F  2NN + 2ML quads, type_balanced_rrf  3
-  G  Full 3NN + 2ML, type_balanced_rrf + rank_avg  2
+  G  Full 3NN + 2ML, type_balanced_rrf + type_balanced_rank_avg  2
 
 Nomination logic
 ----------------
@@ -301,14 +301,18 @@ def build_perspectives(models, test_cids, model_types, top_k=25, rrf_k=60):
         "full_ranking": full_rank,
     })
 
-    # G2: rank_avg
-    fused = rank_averaging(models, test_cids, lower_is_better=True)
+    # G2: type-balanced rank_avg (average within each type, then average types)
+    nn_sub = {n: models[n] for n in nn_names}
+    ml_sub = {n: models[n] for n in ml_names}
+    nn_avg = rank_averaging(nn_sub, test_cids, lower_is_better=True)
+    ml_avg = rank_averaging(ml_sub, test_cids, lower_is_better=True)
+    fused = {cid: (nn_avg[cid] + ml_avg[cid]) / 2.0 for cid in test_cids}
     top_cids, full_rank = _ranked_top_k(fused, top_k)
     perspectives.append({
         "name": "all5_rank_avg",
         "group": "G-Full",
         "models_used": list(models.keys()),
-        "method": "rank_avg",
+        "method": "type_balanced_rank_avg",
         "top_k_cids": top_cids,
         "full_ranking": full_rank,
     })
@@ -865,7 +869,7 @@ def write_report(perspectives, final_candidates, consensus_rows, meta,
     w("| D | 2 NN + 2 ML quads | RRF | 3 |")
     w("| E | 2 NN + 2 ML quads | Rank Averaging | 3 |")
     w("| F | 2 NN + 2 ML quads | Type-Balanced RRF | 3 |")
-    w("| G | Full 3 NN + 2 ML | Type-Balanced RRF + Rank Avg | 2 |")
+    w("| G | Full 3 NN + 2 ML | Type-Balanced RRF + Type-Balanced Rank Avg | 2 |")
     w(f"| | | **Total** | **{n_p}** |")
     w("")
     w("**Rationale**: Unbalanced combinations (e.g. 2 NN + 1 ML, or 3 NN + 2 ML with")
