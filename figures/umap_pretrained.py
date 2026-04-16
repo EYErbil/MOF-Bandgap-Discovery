@@ -18,20 +18,20 @@ Recommended workflow
 
 Usage
 -----
-  # From unified embeddings (RECOMMENDED):
-  python umap_pretrained.py \\
-      --merged_embeddings ./single_forward_embedding_total/all_embeddings.npz \\
-      --labeled_splits_dir .../new_splits/strategy_d_farthest_point \\
-      --qmof_csv .../qmof.csv \\
-      --output_dir ./paper_figures
+  # From merged embeddings (RECOMMENDED — produced by forward_pretrained_embeddings.py):
+  python figures/umap_pretrained.py \\
+      --merged_embeddings figures_output/pretrained_embeddings/all_embeddings.npz \\
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --qmof_csv data/qmof.csv \\
+      --output_dir figures_output/pretrained_umap
 
   # From separate embeddings (legacy, alignment risk):
-  python umap_pretrained.py \\
-      --labeled_embeddings .../embeddings_pretrained.npz \\
-      --unlabeled_embeddings .../unlabeled_embeddings.npz \\
-      --labeled_splits_dir .../new_splits/strategy_d_farthest_point \\
-      --qmof_csv .../qmof.csv \\
-      --output_dir ./paper_figures
+  python figures/umap_pretrained.py \\
+      --labeled_embeddings data/embeddings/embeddings_pretrained.npz \\
+      --unlabeled_embeddings data/unlabeled/embedding_analysis/unlabeled_embeddings.npz \\
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --qmof_csv data/qmof.csv \\
+      --output_dir figures_output/pretrained_umap
 
 Requirements:  pip install numpy matplotlib umap-learn
 """
@@ -537,7 +537,7 @@ def main():
                          "RECOMMENDED — authoritative source.")
 
     # -- output & UMAP --
-    pa.add_argument("--output_dir", type=str, default="./paper_figures")
+    pa.add_argument("--output_dir", type=str, default="./figures_output/pretrained_umap")
     pa.add_argument("--threshold", type=float, default=1.0,
                     help="Bandgap threshold (eV) for 'positive' class")
     pa.add_argument("--n_top_metals", type=int, default=8)

@@ -71,9 +71,9 @@ def _shorten_label(label):
     """Create a readable short label for plot axes."""
     # Known individual models
     _KNOWN = {
-        "[single]_exp364_embsplit_d_fulltune":        "exp364 (NN)",
-        "[single]_exp370_embsplit_d_fulltune_seed2":  "exp370 (NN)",
-        "[single]_exp371_embsplit_d_fulltune_seed3":  "exp371 (NN)",
+        "[single]_exp364_fulltune":        "exp364 (NN)",
+        "[single]_exp370_seed2":  "exp370 (NN)",
+        "[single]_exp371_seed3":  "exp371 (NN)",
         "[single]_smote_extra_trees":                 "SMOTE-ET (ML)",
         "[single]_smote_random_forest":               "SMOTE-RF (ML)",
     }

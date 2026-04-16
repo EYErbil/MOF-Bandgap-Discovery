@@ -22,30 +22,31 @@ Two modes:
   2. --plot    : Load existing NPZ → generate UMAP panels
   (Can do both in one run: --extract --plot)
 
-Usage (cluster):
+Usage:
   # Extract + plot in one go:
-  python forward_finetuned_umap.py \\
+  python figures/forward_finetuned_umap.py \\
       --extract --plot \\
       --checkpoint /path/to/best_es-spearman=0.xxx.ckpt \\
       --data_dir data/raw/test \\
       --labeled_splits_dir data/splits/strategy_d_farthest_point \\
       --unlabeled_json data/unlabeled/test_bandgaps_regression.json \\
       --qmof_csv data/qmof.csv \\
-      --output_dir figures_output/finetuned_umap
+      --output_dir figures_output/finetuned_umap_exp364_fulltune
 
   # Or from experiment name (auto-finds best checkpoint):
-  python forward_finetuned_umap.py \\
+  python figures/forward_finetuned_umap.py \\
       --extract --plot \\
-      --experiment exp364_embsplit_d_fulltune \\
-      --data_dir ... --labeled_splits_dir ... --unlabeled_json ... \\
-      --qmof_csv ... --output_dir ./posttrain_umap_figures
+      --experiment exp364_fulltune \\
+      --data_dir data/raw/test --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --unlabeled_json data/unlabeled/test_bandgaps_regression.json \\
+      --qmof_csv data/qmof.csv --output_dir figures_output/finetuned_umap_exp364_fulltune
 
   # Plot-only from existing NPZ (fast re-runs to tweak visuals):
   python forward_finetuned_umap.py \\
       --plot \\
-      --embeddings_npz ./posttrain_umap_figures/posttrain_embeddings.npz \\
-      --labeled_splits_dir ... --qmof_csv ... \\
-      --output_dir ./posttrain_umap_figures
+      --embeddings_npz figures_output/finetuned_umap_exp364_fulltune/posttrain_embeddings.npz \\
+      --labeled_splits_dir data/splits/strategy_d_farthest_point --qmof_csv data/qmof.csv \\
+      --output_dir figures_output/finetuned_umap_exp364_fulltune
 
 Requirements: pip install moftransformer torch numpy matplotlib umap-learn
 """
@@ -744,7 +745,7 @@ def main():
     # Shared
     pa.add_argument("--labeled_splits_dir", required=True,
                     help="Dir with {train,val,test}_bandgaps_regression.json")
-    pa.add_argument("--output_dir", default="./posttrain_umap_figures")
+    pa.add_argument("--output_dir", default="./figures_output/finetuned_umap")
     pa.add_argument("--threshold", type=float, default=1.0)
     pa.add_argument("--n_neighbors", type=int, default=30)
     pa.add_argument("--min_dist", type=float, default=0.3)

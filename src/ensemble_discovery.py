@@ -36,8 +36,8 @@ Usage:
 
   # By full paths:
   python ensemble_discovery.py \\
-      --prediction_dirs experiments/exp362_embsplit_d_freeze2 \\
-                        experiments/exp364_embsplit_d_fulltune \\
+      --prediction_dirs experiments/exp364_fulltune \\
+                        experiments/exp370_seed2 \\
                         embedding_classifiers/strategy_d_farthest_point/random_forest \\
                         knn_results/strategy_d_farthest_point \\
       --output_dir ./ensemble_results/split_d
@@ -45,9 +45,9 @@ Usage:
   # Auto-discover all models for a split:
   python ensemble_discovery.py \\
       --auto_discover \\
-      --nn_dirs experiments/exp362_embsplit_d_freeze2 \\
-                experiments/exp363_embsplit_d_linprobe \\
-                experiments/exp364_embsplit_d_fulltune \\
+      --nn_dirs experiments/exp364_fulltune \\
+                experiments/exp370_seed2 \\
+                experiments/exp371_seed3 \\
       --clf_dir embedding_classifiers/strategy_d_farthest_point \\
       --knn_dir knn_results/strategy_d_farthest_point \\
       --output_dir ./ensemble_results/split_d
@@ -297,7 +297,7 @@ def resolve_models_to_dirs(base_dir, model_names):
     Resolve short model names to full paths containing test_predictions.csv.
 
     Supports:
-      - NN experiments: exp364, exp362, exp364_embsplit_d_fulltune, etc.
+      - NN experiments: exp364, exp362, exp364_fulltune, etc.
         -> base_dir/experiments/<matching dir>
       - ML classifiers: extra_trees, random_forest, knn_classifier, etc.
         -> base_dir/embedding_classifiers/strategy_d_farthest_point/<name>
@@ -334,14 +334,14 @@ def resolve_models_to_dirs(base_dir, model_names):
             if os.path.exists(os.path.join(knn_base, 'test_predictions.csv')):
                 resolved.append(knn_base)
                 continue
-        # NN experiment: exp364 or exp364_embsplit_d_fulltune
+        # NN experiment: exp364 or exp364_fulltune
         if name.lower().startswith('exp') and any(c.isdigit() for c in name):
             if os.path.isdir(experiments_dir):
                 exact = os.path.join(experiments_dir, name)
                 if os.path.isdir(exact) and os.path.exists(os.path.join(exact, 'test_predictions.csv')):
                     resolved.append(os.path.abspath(exact))
                 else:
-                    # prefix match: exp364 -> exp364_embsplit_d_fulltune
+                    # prefix match: exp364 -> exp364_fulltune
                     for d in sorted(glob.glob(os.path.join(experiments_dir, name + '*'))):
                         if os.path.isdir(d) and os.path.exists(os.path.join(d, 'test_predictions.csv')):
                             resolved.append(os.path.abspath(d))

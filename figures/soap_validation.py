@@ -33,10 +33,11 @@ Usage  (cluster)
       --output_dir figures_output/soap_validation
 
   # With ensemble predictions for applicability domain:
-  python soap_validation.py \\
-      --cif_dir ... --merged_embeddings ... --labeled_splits_dir ... \\
-      --nominations /path/to/top25_for_DFT_rrf.txt \\
-      --output_dir ./soap_analysis
+  python figures/soap_validation.py \\
+      --cif_dir data/raw/cif --merged_embeddings figures_output/pretrained_embeddings/all_embeddings.npz \\
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --nominations data/unlabeled/nomination-SOAP/FINAL_TOP25_diverse.txt \\
+      --output_dir figures_output/soap_validation
 
 Requirements
 ------------
@@ -992,7 +993,7 @@ def main():
     pa.add_argument("--nominations", default=None,
                     help="File with top-K ensemble CIF IDs (one per line) "
                          "for applicability domain analysis")
-    pa.add_argument("--output_dir", default="./soap_analysis")
+    pa.add_argument("--output_dir", default="./figures_output/soap_validation")
     pa.add_argument("--threshold", type=float, default=1.0,
                     help="Bandgap threshold in eV (default: 1.0)")
     pa.add_argument("--n_sample_negatives", type=int, default=500,

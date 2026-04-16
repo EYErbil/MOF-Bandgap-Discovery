@@ -2,12 +2,9 @@
 #SBATCH --job-name=ensemble
 #SBATCH --output=logs/04_ensemble_%j.out
 #SBATCH --error=logs/04_ensemble_%j.err
-#SBATCH --partition=ai
-#SBATCH --account=ai
-#SBATCH --qos=ai
-#SBATCH --gres=gpu:1
+#SBATCH --partition=mid
 #SBATCH --time=02:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 
 # =============================================================================

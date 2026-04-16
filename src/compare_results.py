@@ -382,7 +382,7 @@ def scan_experiments_dir(exp_base):
 def infer_split(dirname):
     """Infer split from directory name for experiments not in metadata."""
     dn = dirname.lower()
-    if 'splitd' in dn or 'embsplit_d' in dn or 'farthest' in dn:
+    if 'splitd' in dn or 'farthest' in dn or 'fulltune' in dn:
         return 'D'
     elif 'splite' in dn or 'embsplit_e' in dn or 'cluster' in dn:
         return 'E'

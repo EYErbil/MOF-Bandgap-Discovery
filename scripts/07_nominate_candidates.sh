@@ -2,9 +2,9 @@
 #SBATCH --job-name=dft_nominate
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --partition=short
-#SBATCH --time=01:50:00
-#SBATCH --mem=100G
+#SBATCH --partition=mid
+#SBATCH --time=02:00:00
+#SBATCH --mem=64G
 #SBATCH --output=logs/07_nomination_%j.out
 #SBATCH --error=logs/07_nomination_%j.err
 #SBATCH --mail-type=ALL

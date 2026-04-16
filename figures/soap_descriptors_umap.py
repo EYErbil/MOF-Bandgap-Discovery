@@ -31,14 +31,15 @@ Usage:
   # With ensemble nominations:
   python soap_descriptors_umap.py \\
       --cif_dir ... --labeled_splits_dir ... --unlabeled_json ... \\
-      --nominations /path/to/FINAL_DFT_TOP25.txt \\
-      --output_dir ./soap_umap_figures
+      --nominations data/unlabeled/nomination-SOAP/FINAL_TOP25_diverse.txt \\
+      --output_dir figures_output/soap_umap
 
   # Reuse cached SOAP (fast re-runs for tweaking plots):
-  python soap_descriptors_umap.py \\
-      --cif_dir ... --labeled_splits_dir ... --unlabeled_json ... \\
-      --soap_cache ./soap_analysis/soap_descriptors.npz \\
-      --output_dir ./soap_umap_figures
+  python figures/soap_descriptors_umap.py \\
+      --cif_dir data/raw/cif --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --unlabeled_json data/unlabeled/test_bandgaps_regression.json \\
+      --soap_cache figures_output/soap_umap/soap_descriptors.npz \\
+      --output_dir figures_output/soap_umap
 
 Requirements:  pip install dscribe ase numpy matplotlib umap-learn scipy
 """
@@ -678,7 +679,7 @@ def main():
                     help="File with top-K ensemble CIF IDs (one per line)")
     pa.add_argument("--soap_cache", default=None,
                     help="Pre-computed soap_descriptors.npz (skip SOAP stage)")
-    pa.add_argument("--output_dir", default="./soap_umap_figures")
+    pa.add_argument("--output_dir", default="./figures_output/soap_umap")
     pa.add_argument("--threshold", type=float, default=1.0)
     pa.add_argument("--n_neighbors", type=int, default=30)
     pa.add_argument("--min_dist", type=float, default=0.3)

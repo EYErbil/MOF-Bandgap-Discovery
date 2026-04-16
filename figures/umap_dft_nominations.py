@@ -32,8 +32,8 @@ Usage:
   python umap_dft_nominations.py \
       --pretrained_npz /path/to/all_embeddings.npz \
       --bandgap_csv /path/to/bandgap_results.csv \
-      --labeled_splits_dir /path/to/new_splits/strategy_d_farthest_point \
-      --output_dir ./nominated_umap_figures \
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \
+      --output_dir figures_output/dft_nominations \
       --load_umap_cache --save_umap_cache
 
 Requirements: pip install numpy matplotlib umap-learn
@@ -552,7 +552,7 @@ def main():
                     help="Path to bandgap_results.csv from mass_bandgap_analyzer.py")
     pa.add_argument("--labeled_splits_dir", required=True,
                     help="Dir with {train,val,test}_bandgaps_regression.json")
-    pa.add_argument("--output_dir", default="./nominated_umap_figures")
+    pa.add_argument("--output_dir", default="./figures_output/nominated_umap")
     pa.add_argument("--threshold", type=float, default=BANDGAP_THRESHOLD,
                     help="Bandgap threshold for positive class (eV)")
     pa.add_argument("--n_neighbors", type=int, default=30)

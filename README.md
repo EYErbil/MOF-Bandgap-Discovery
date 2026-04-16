@@ -143,6 +143,17 @@ pip install moftransformer
 pip install -r requirements.txt
 ```
 
+### Reproducibility checklist (cold clone)
+
+1. **Clone and environment** — Follow [Installation](#installation) (PyTorch / PyG order matters).
+2. **`scripts/config.sh`** — Set `BASE_DIR` to the cloned repo path and `VENV_PATH` to your venv `activate` script. Adjust `MODULE_LOADS` or set it to `""` if you do not use environment modules.
+3. **SLURM headers** — Each `scripts/*.sh` file has its own `#SBATCH` partition/account/QoS lines. Edit them to match your site (see [Configuration](#configuration)).
+4. **Data you must supply** — The repository does not include MOFs, embeddings, or checkpoints. Build `data/` as described in [data/README.md](data/README.md) (labeled set for Steps 1–5, separate unlabeled set for Steps 6–7). Without these, jobs will fail at Step 1 or 6 with missing-path errors.
+5. **Optional inputs** — `data/qmof.csv` (metal-center panels in F2/F3), SOAP cache for Step 7 SOAP run (run F4 first or set `SOAP_EMBEDDINGS` in `07_nominate_candidates.sh`).
+6. **`logs/`** — Pipeline scripts create `logs/` automatically; ensure the job working directory is the repo root (the provided scripts `cd` to `BASE_DIR`).
+
+Scripts under `scripts/optional/` may assume extra directories (for example `data/splits/original` for `run_umap_analysis.sh`). Treat them as diagnostics unless you set up those paths.
+
 ### Configuration
 
 Edit `scripts/config.sh` -- the **only file** with cluster-specific paths:
@@ -166,7 +177,7 @@ Submit each step after the previous one completes. Check job status with `squeue
 
 Before anything else, convert your raw CIF files into MOFTransformer's input format. This produces three files per MOF: `.grid` (energy grid), `.griddata16` (voxelised grid), and `.graphdata` (atom graph). Follow the [MOFTransformer preprocessing guide](https://github.com/hspark1212/MOFTransformer) -- the `prepare_data` utility handles this.
 
-Place all preprocessed files under `data/raw/` (see [data/README.md](data/README.md) for the expected layout).
+Place all preprocessed files under `data/raw/test/` (MOFTransformer expects a parent/split directory layout) and create `data/raw/test_bandgaps_regression.json` mapping every CIF ID to its DFT bandgap value in eV. See [data/README.md](data/README.md) for the expected structure. Keep the original CIF files in `data/raw/cif/` if you plan to run SOAP analysis (F4, Step 7).
 
 ### Step 1: Extract Embeddings and Create Splits
 
@@ -242,6 +253,8 @@ This is the final step: selecting 25 structures for DFT bandgap calculation. Rat
 4. **Combined list** -- structures nominated by the most strategies are selected first
 
 The script runs twice: once using PMTransformer embeddings as the diversity space, once using SOAP descriptors. SOAP-based diversity is preferred because it provides a purely geometric measure of structural similarity, independent of the learned representations.
+
+**SOAP embeddings for Step 7:** The SOAP run requires a precomputed `soap_descriptors.npz` file. This is produced as a side-effect of running **F4** (`scripts/figures/04_soap_descriptors_umap.sh`), which computes SOAP descriptors for all MOFs and caches them. After running F4, set `SOAP_EMBEDDINGS` at the top of `scripts/07_nominate_candidates.sh` to point to the cached file (e.g., `figures_output/soap_umap/soap_descriptors.npz`). If SOAP embeddings are not available, the script will only run the PMTransformer-based nomination.
 
 **Key parameters** (edit at the top of `scripts/07_nominate_candidates.sh`):
 

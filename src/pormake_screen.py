@@ -20,9 +20,9 @@ known conductor.
 
 Usage:
   python pormake_screen.py \\
-      --nn_predictions experiments/exp364_embsplit_d_fulltune/test_predictions.csv \\
+      --nn_predictions experiments/exp364_fulltune/test_predictions.csv \\
       --embeddings_path ./embedding_analysis/embeddings_pretrained.npz \\
-      --labels_dir ./new_splits/strategy_d_farthest_point \\
+      --labels_dir ./data/splits/strategy_d_farthest_point \\
       --output_dir ./screening_results \\
       --n_candidates 25
 
@@ -31,7 +31,7 @@ Usage:
       --nn_predictions experiments/exp364_*/test_predictions.csv \\
                        experiments/exp362_*/test_predictions.csv \\
       --embeddings_path ./embedding_analysis/embeddings_pretrained.npz \\
-      --labels_dir ./new_splits/strategy_d_farthest_point \\
+      --labels_dir ./data/splits/strategy_d_farthest_point \\
       --output_dir ./screening_results \\
       --n_candidates 25
 """
@@ -371,9 +371,9 @@ def main():
 Examples:
   # Screen using NN + embeddings:
   python pormake_screen.py \\
-      --nn_predictions experiments/exp364_embsplit_d_fulltune/test_predictions.csv \\
+      --nn_predictions experiments/exp364_fulltune/test_predictions.csv \\
       --embeddings_path ./embedding_analysis/embeddings_pretrained.npz \\
-      --labels_dir ./new_splits/strategy_d_farthest_point \\
+      --labels_dir ./data/splits/strategy_d_farthest_point \\
       --n_candidates 25
 
   # Multiple NN models (averaged for uncertainty):
@@ -381,7 +381,7 @@ Examples:
       --nn_predictions experiments/exp364_*/test_predictions.csv \\
                        experiments/exp362_*/test_predictions.csv \\
       --embeddings_path ./embedding_analysis/embeddings_pretrained.npz \\
-      --labels_dir ./new_splits/strategy_d_farthest_point \\
+      --labels_dir ./data/splits/strategy_d_farthest_point \\
       --n_candidates 25 \\
       --output_dir ./screening_results
 """)

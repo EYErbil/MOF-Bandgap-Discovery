@@ -16,11 +16,11 @@ Outputs (into --output_dir):
   - embeddings_posttrain.npz (optional, with --save_embeddings)
 
 Usage:
-  python umap_posttrain.py --checkpoint experiments/exp364_embsplit_d_fulltune/best_es-epoch=XX.ckpt \\
-      --data_dir new_splits/strategy_d_farthest_point --output_dir ./umap_posttrain_exp364
+  python umap_posttrain.py --checkpoint experiments/exp364_fulltune/best_es-epoch=XX.ckpt \\
+      --data_dir data/splits/strategy_d_farthest_point --output_dir ./umap_posttrain_exp364
 
-  python umap_posttrain.py --experiment exp364_embsplit_d_fulltune \\
-      --data_dir new_splits/strategy_d_farthest_point --output_dir ./umap_posttrain_exp364
+  python umap_posttrain.py --experiment exp364_fulltune \\
+      --data_dir data/splits/strategy_d_farthest_point --output_dir ./umap_posttrain_exp364
 """
 
 import os
@@ -144,7 +144,7 @@ def main():
     parser.add_argument('--checkpoint', type=str, default=None,
                         help='Path to .ckpt file')
     parser.add_argument('--experiment', type=str, default=None,
-                        help='Experiment name (e.g. exp364_embsplit_d_fulltune); '
+                        help='Experiment name (e.g. exp364_fulltune); '
                              'checkpoint = experiments/<name>/best_es-*.ckpt')
     parser.add_argument('--data_dir', type=str,
                         default=os.path.join(os.path.dirname(os.path.abspath(__file__)),

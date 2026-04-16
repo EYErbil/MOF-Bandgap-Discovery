@@ -25,8 +25,8 @@
 #       Output: splits/strategy_d_farthest_point/{train,val,test}_bandgaps_regression.json
 #
 # PREREQUISITES:
-#   - MOF structure files (.grid, .griddata16, .graphdata) in data/raw/
-#   - Label JSON files (bandgap values per CIF ID)
+#   - MOF structure files under data/raw/{train,val,test}/ (or test-only pool; see data/README.md)
+#   - Bandgap JSONs: data/raw/{train,val,test}_bandgaps_regression.json (at least test_* for a single-pool layout)
 #   - moftransformer installed with pretrained weights
 #
 # USAGE:
@@ -54,7 +54,10 @@ section "STEP 1b: CREATE EMBEDDING-INFORMED SPLITS (Strategy D)"
 
 python data_preparation/embedding_split.py \
     --embeddings_path "$DATA_DIR/embeddings/embeddings_pretrained.npz" \
-    --output_dir "$DATA_DIR/splits"
+    --splits_dir "$DATA_DIR/raw" \
+    --data_dir "$DATA_DIR/raw" \
+    --output_dir "$DATA_DIR/splits" \
+    --strategy D
 
 echo "  Output: $DATA_DIR/splits/strategy_d_farthest_point/"
 

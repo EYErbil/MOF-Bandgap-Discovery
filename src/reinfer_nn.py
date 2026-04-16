@@ -2,16 +2,11 @@
 """
 Re-run NN test inference after split modification.
 
-Loads each trained NN checkpoint and re-runs test_step on the updated
-test set (BADXEJ01_FSR added, ILEDIO_FSR removed). Model weights are
-NOT modified -- only the test set changed.
+Loads each trained NN checkpoint and re-runs test_step on the current
+split under ``--data_dir``. Model weights are not modified.
 
-All 9549 shared MOFs get bit-identical predictions (same weights, same
-forward pass, transformer uses LayerNorm so batch composition doesn't
-matter). Only BADXEJ01_FSR is newly inferred.
-
-After running, it verifies that new predictions match the reference exactly
-for all shared MOFs. Reference file per experiment: {exp_dir}/hideffs/test_predictions.csv
+If a reference ``hideffs/test_predictions.csv`` exists per experiment, the
+script can verify that re-inference matches for overlapping MOFs (optional).
 
 Why can re-inference differ from the reference?
   - GPU non-determinism: CUDA/cuDNN often use non-deterministic reductions,
@@ -24,7 +19,7 @@ Usage (on the cluster):
   python reinfer_nn.py
   python reinfer_nn.py --deterministic    # reproducible (slower)
   python reinfer_nn.py --tolerance 1e-5   # allow small GPU noise
-  python reinfer_nn.py --experiments exp364_embsplit_d_fulltune
+  python reinfer_nn.py --experiments exp364_fulltune
 """
 
 import os
@@ -55,9 +50,10 @@ from moftransformer.config import config as default_config_fn
 from moftransformer.utils.validation import get_valid_config
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "new_splits", "strategy_d_farthest_point")
-EXPERIMENTS_DIR = os.path.join(BASE_DIR, "experiments")
+_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(_SRC_DIR)
+DATA_DIR = os.path.join(_REPO_ROOT, "data", "splits", "strategy_d_farthest_point")
+EXPERIMENTS_DIR = os.path.join(_REPO_ROOT, "experiments")
 THRESHOLD = 1.0
 
 
@@ -65,7 +61,7 @@ def find_split_d_experiments():
     """Auto-discover all Split D experiment directories that have checkpoints."""
     found = {}
     for name in sorted(os.listdir(EXPERIMENTS_DIR)):
-        if "embsplit_d" not in name:
+        if not name.startswith("exp"):
             continue
         exp_dir = os.path.join(EXPERIMENTS_DIR, name)
         if not os.path.isdir(exp_dir):
@@ -342,18 +338,22 @@ def main():
     parser = argparse.ArgumentParser(
         description="Re-run NN test inference after split swap")
     parser.add_argument("--experiments", nargs="+", default=None,
-                        help="Experiment names (default: auto-discover all Split D)")
+                        help="Experiment names (default: auto-discover all with checkpoints)")
+    parser.add_argument("--experiments_dir", type=str, default=None,
+                        help="Directory containing experiment folders (default: <repo>/experiments)")
     parser.add_argument("--data_dir", type=str, default=None,
-                        help="Override data directory")
+                        help="Split directory with test_bandgaps_regression.json (default: <repo>/data/splits/strategy_d_farthest_point)")
     parser.add_argument("--deterministic", action="store_true",
                         help="Use deterministic CUDA/cuDNN (reproducible, slower)")
     parser.add_argument("--tolerance", type=float, default=1e-6,
                         help="Verification tolerance |new-ref| (default 1e-6; use 1e-5 for GPU noise)")
     args = parser.parse_args()
 
-    global DATA_DIR
+    global DATA_DIR, EXPERIMENTS_DIR
     if args.data_dir:
         DATA_DIR = args.data_dir
+    if args.experiments_dir:
+        EXPERIMENTS_DIR = args.experiments_dir
 
     pl.seed_everything(42)
 
@@ -383,15 +383,6 @@ def main():
 
     print(f"  Data dir:  {DATA_DIR}")
     print(f"  Test set:  {len(test_data)} MOFs ({len(test_pos)} positives)")
-    print(f"  BADXEJ01_FSR in test: {'BADXEJ01_FSR' in test_data}")
-    print(f"  ILEDIO_FSR in test:   {'ILEDIO_FSR' in test_data}")
-
-    if "ILEDIO_FSR" in test_data:
-        print("  ERROR: ILEDIO_FSR still in test JSON! Fix split files first.")
-        sys.exit(1)
-    if "BADXEJ01_FSR" not in test_data:
-        print("  ERROR: BADXEJ01_FSR not in test JSON! Fix split files first.")
-        sys.exit(1)
 
     # Discover experiments
     if args.experiments:

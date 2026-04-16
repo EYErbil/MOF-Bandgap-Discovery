@@ -7,13 +7,26 @@ The data files are **not included** in this repository due to their size.
 
 After Step 0 (preprocessing) and Step 1 (embedding extraction + splitting), the directory will look like this:
 
+### Labeled data before Strategy D (`data/raw/`)
+
+`scripts/01_extract_embeddings.sh` calls `analyze_embeddings.py` with `--data_dir` pointing at `data/raw/`. That script walks **train**, **val**, and **test** splits: for each split it expects `data/raw/<split>/` (MOFTransformer files) **and** a label file `data/raw/<split>_bandgaps_regression.json` if that split exists.
+
+**Layout A — single pool (simplest):** put **all** labeled structures under `data/raw/test/` and **all** bandgaps in `data/raw/test_bandgaps_regression.json` only. Train/val JSONs and folders may be absent; embeddings are extracted from the test pool only, then `embedding_split.py` (still reading labels from `data/raw/`) builds Strategy D under `data/splits/`.
+
+**Layout B — initial train/val/test:** use three subfolders `data/raw/train|val|test/` and three JSON files `train_bandgaps_regression.json`, etc., if you already have a split (e.g. from QMOF) before re-splitting in embedding space.
+
+Optional: keep original **CIF** files under `data/raw/cif/` for SOAP (figures F4, Step 7).
+
 ```
 data/
-├── raw/                                # All labeled MOF structures (pre-split)
-│   └── test/                           # MOFTransformer expects a parent/split layout
-│       ├── <CIF_ID>.grid               #   — all ~10K labeled structures go here
-│       ├── <CIF_ID>.griddata16
-│       └── <CIF_ID>.graphdata
+├── raw/
+│   ├── test/                           # MOFTransformer preprocessed files (see layouts A/B above)
+│   │   ├── <CIF_ID>.grid
+│   │   ├── <CIF_ID>.griddata16
+│   │   └── <CIF_ID>.graphdata
+│   ├── test_bandgaps_regression.json   # Required for layout A (all labels); also part of layout B
+│   └── cif/                            # (optional) Original .cif for SOAP
+│       └── <CIF_ID>.cif
 │
 ├── splits/                             # Created by Step 1 (embedding_split.py)
 │   └── strategy_d_farthest_point/
@@ -41,9 +54,6 @@ data/
 │   ├── test_bandgaps_regression.json   #   CIF IDs → 0.0 (placeholder)
 │   └── embedding_analysis/             # Created by Step 6
 │       └── unlabeled_embeddings.npz
-│
-├── raw/cif/                            # (optional) Original CIF files for SOAP computation
-│   └── <CIF_ID>.cif                    #   needed by figures/soap_descriptors_umap.py
 │
 └── qmof.csv                           # (optional) QMOF Database metadata
                                         #   needed for metal center UMAP panels (F2, F3)
@@ -93,8 +103,12 @@ This file contains QMOF Database metadata, particularly the `name` and `info.for
 
 The raw data originates from the **QMOF Database**:
 
-1. Download structures from the [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF).
+1. Download structures and bandgap values from the [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF).
 2. Convert CIF files to MOFTransformer format using `moftransformer.utils.prepare_data` (Step 0).
-3. Place preprocessed files in `data/raw/test/`.
-4. Run Step 1 (`scripts/01_extract_embeddings.sh`) to create embeddings and Strategy D splits.
-5. For discovery, prepare a separate unlabeled set in `data/unlabeled/test/`.
+3. Place all preprocessed files in `data/raw/test/`.
+4. Create `data/raw/test_bandgaps_regression.json` mapping every CIF ID to its bandgap value in eV (this is the initial label file before splitting):
+   ```json
+   {"QMOF-a1b2c3": 0.42, "QMOF-d4e5f6": 2.15, ...}
+   ```
+5. Run Step 1 (`scripts/01_extract_embeddings.sh`) — this extracts embeddings and creates Strategy D train/val/test splits under `data/splits/`.
+6. For discovery (Steps 6-7), prepare a separate unlabeled set in `data/unlabeled/test/` with a placeholder `data/unlabeled/test_bandgaps_regression.json`.

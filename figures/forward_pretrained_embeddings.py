@@ -11,7 +11,7 @@ unlabeled embeddings in two separate runs with potentially different code.
 
 Output
 ------
-  single_forward_embedding_total/all_embeddings.npz
+  figures_output/pretrained_embeddings/all_embeddings.npz
     Keys:
       cif_ids     – np.array of str (with _FSR suffix)
       embeddings  – np.ndarray [N, 768]
@@ -293,7 +293,7 @@ def main():
                     help="Split dir with {train,val,test}_bandgaps_regression.json")
     pa.add_argument("--unlabeled_json", required=True,
                     help="Unlabeled test_bandgaps_regression.json (dummy labels)")
-    pa.add_argument("--output_dir", default="./single_forward_embedding_total",
+    pa.add_argument("--output_dir", default="./figures_output/pretrained_embeddings",
                     help="Output directory")
     pa.add_argument("--downstream", default="bandgaps_regression")
     pa.add_argument("--batch_size", type=int, default=1,
@@ -310,7 +310,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     print("=" * 70)
-    print("  UNIFIED EMBEDDING EXTRACTION -- ALL MOFs, SINGLE FORWARD PASS")
+    print("  PRETRAINED EMBEDDING EXTRACTION -- ALL MOFs, SINGLE FORWARD PASS")
     print("=" * 70)
 
     # ── 0. Resolve data_dir layout ───────────────────────────────────

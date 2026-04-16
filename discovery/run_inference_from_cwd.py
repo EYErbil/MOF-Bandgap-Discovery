@@ -3,7 +3,7 @@
 Run NN inference using the best_es checkpoint in the current folder.
 
 Run from the experiment folder (same place as run.py):
-  cd experiments/exp364_embsplit_d_fulltune
+  cd experiments/exp364_fulltune
   python ../../discovery/run_inference_from_cwd.py
 
 Uses best_es checkpoint (Spearman-best). Writes inference_predictions.csv, inference_ranked.csv, top{N}_for_DFT.txt directly into the current folder.

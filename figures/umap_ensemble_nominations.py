@@ -11,18 +11,18 @@ Generates 3 separate plots — one per experiment (exp364, exp370, exp371).
 
 Usage:
   python figures/umap_ensemble_nominations.py \\
-      --npz_exp364 figures_output/finetuned_umap_exp364/posttrain_embeddings.npz \\
-      --npz_exp370 figures_output/finetuned_umap_exp370/posttrain_embeddings.npz \\
-      --npz_exp371 figures_output/finetuned_umap_exp371/posttrain_embeddings.npz \\
+      --npz_exp364 figures_output/finetuned_umap_exp364_fulltune/posttrain_embeddings.npz \\
+      --npz_exp370 figures_output/finetuned_umap_exp370_seed2/posttrain_embeddings.npz \\
+      --npz_exp371 figures_output/finetuned_umap_exp371_seed3/posttrain_embeddings.npz \\
       --labeled_splits_dir data/splits/strategy_d_farthest_point \\
       --nominations data/unlabeled/nomination-SOAP/FINAL_TOP25_diverse.txt \\
-      --output_dir figures_output/ensemble_nominations
+      --output_dir figures_output/ensemble_umap
 
   # Plot-only with cached UMAP coords (fast re-runs):
-  python umap_ensemble_nominations.py \\
+  python figures/umap_ensemble_nominations.py \\
       --npz_exp364 ... --npz_exp370 ... --npz_exp371 ... \\
       --labeled_splits_dir ... --nominations ... \\
-      --output_dir ./posttrain_ensemble_figures \\
+      --output_dir figures_output/ensemble_umap \\
       --load_umap_cache
 
 Requirements: pip install numpy matplotlib umap-learn
@@ -409,7 +409,7 @@ def main():
                     help="Dir with {train,val,test}_bandgaps_regression.json")
     pa.add_argument("--nominations", required=True,
                     help="File with top-25 ensemble CIF IDs (one per line)")
-    pa.add_argument("--output_dir", default="./posttrain_ensemble_figures")
+    pa.add_argument("--output_dir", default="./figures_output/ensemble_umap")
     pa.add_argument("--threshold", type=float, default=1.0,
                     help="Bandgap threshold for positive class (eV)")
     pa.add_argument("--n_neighbors", type=int, default=30)

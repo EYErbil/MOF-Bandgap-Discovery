@@ -6,14 +6,14 @@ Then run umap_analysis_split_d.py with --embeddings_path pointing to this npz to
 all UMAP plots and reports (same as the working pretrained UMAP pipeline).
 
 Usage:
-  python extract_posttrain_embeddings.py --experiment exp364_embsplit_d_fulltune \\
-      --data_dir ./new_splits/strategy_d_farthest_point \\
+  python extract_posttrain_embeddings.py --experiment exp364_fulltune \\
+      --data_dir ./data/splits/strategy_d_farthest_point \\
       --output_npz ./umap_posttrain_exp364/embeddings_posttrain.npz
 
   # Then run the existing UMAP script (same as run_umap_original.sh uses for Split D):
   python umap_analysis_split_d.py \\
       --embeddings_path ./umap_posttrain_exp364/embeddings_posttrain.npz \\
-      --splitd_dir ./new_splits/strategy_d_farthest_point \\
+      --splitd_dir ./data/splits/strategy_d_farthest_point \\
       --output_dir ./umap_posttrain_exp364
 """
 
@@ -163,7 +163,7 @@ def main():
     parser = argparse.ArgumentParser(description="Extract post-training embeddings to .npz")
     parser.add_argument("--checkpoint", type=str, default=None, help="Path to .ckpt")
     parser.add_argument("--experiment", type=str, default=None,
-                        help="e.g. exp364_embsplit_d_fulltune; finds best_es in experiments/<name>")
+                        help="e.g. exp364_fulltune; finds best_es in experiments/<name>")
     parser.add_argument("--data_dir", type=str, required=True,
                         help="Split directory (train/val/test with .graphdata etc.)")
     parser.add_argument("--output_npz", type=str, required=True,

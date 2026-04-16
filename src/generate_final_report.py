@@ -96,7 +96,7 @@ def get_metal(cif_id):
 def short_name(model_name):
     """Shorten model name for display."""
     s = model_name.replace('experiments/', '').replace('strategy_d_farthest_point/', '')
-    s = s.replace('exp', 'E').replace('embsplit_d_', '').replace('_FSR', '')
+    s = s.replace('exp', 'E').replace('_FSR', '')
     s = s.replace('knn_results/strategy_d_farthest_point', 'kNN_reg')
     return s
 
@@ -104,13 +104,9 @@ def short_name(model_name):
 def nice_name(model_name):
     """Human-readable model name."""
     mapping = {
-        'experiments/exp362_embsplit_d_freeze2': 'NN freeze-2 (exp362)',
-        'experiments/exp363_embsplit_d_linprobe': 'NN linprobe (exp363)',
-        'experiments/exp364_embsplit_d_fulltune': 'NN fulltune (exp364)',
-        'experiments/exp370_embsplit_d_fulltune_seed2': 'NN fulltune s2 (exp370)',
-        'experiments/exp371_embsplit_d_fulltune_seed3': 'NN fulltune s3 (exp371)',
-        'experiments/exp372_embsplit_d_freeze1': 'NN freeze-1 (exp372)',
-        'experiments/exp373_embsplit_d_fulltune_weighted': 'NN weighted (exp373)',
+        'experiments/exp364_fulltune': 'NN fulltune (exp364)',
+        'experiments/exp370_seed2': 'NN fulltune s2 (exp370)',
+        'experiments/exp371_seed3': 'NN fulltune s3 (exp371)',
         'knn_results/strategy_d_farthest_point': 'kNN regression',
         'strategy_d_farthest_point/extra_trees': 'Extra Trees',
         'strategy_d_farthest_point/knn_classifier': 'kNN classifier',
@@ -567,7 +563,7 @@ def fig2_recall_at_k_curves(data, output_dir):
     n_total = 9550
     n_pos = 9
 
-    best_nn_name = 'experiments/exp364_embsplit_d_fulltune'
+    best_nn_name = 'experiments/exp364_fulltune'
     best_ml_name = 'strategy_d_farthest_point/extra_trees'
     knn_name = 'strategy_d_farthest_point/knn_classifier'
 
@@ -1061,7 +1057,7 @@ def fig9_enrichment_factor(data, output_dir):
         return
 
     best_ens_key = 'rrf_k60'
-    best_single_key = 'experiments/exp364_embsplit_d_fulltune'
+    best_single_key = 'experiments/exp364_fulltune'
 
     ens_m = sel.get('ensemble_methods', {}).get(best_ens_key, {})
     single_m = sel.get('individual_models', {}).get(best_single_key, {})
