@@ -21,21 +21,21 @@ Pipeline:
   2. Run UMAP on SOAP vectors → 2D coordinates
   3. Generate publication-quality panels
 
-Usage (cluster):
-  python figure_soap_umap.py \\
-      --cif_dir /scratch/.../Train_ready_directory/test \\
-      --labeled_splits_dir /scratch/.../new_splits/strategy_d_farthest_point \\
-      --unlabeled_json /scratch/.../Phase6_QMOFinference/Processed-data/test_bandgaps_regression.json \\
-      --output_dir ./soap_umap_figures
+Usage:
+  python figures/soap_descriptors_umap.py \\
+      --cif_dir data/raw/cif \\
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --unlabeled_json data/unlabeled/test_bandgaps_regression.json \\
+      --output_dir figures_output/soap_umap
 
   # With ensemble nominations:
-  python figure_soap_umap.py \\
+  python soap_descriptors_umap.py \\
       --cif_dir ... --labeled_splits_dir ... --unlabeled_json ... \\
-      --phase6_top_predictions /path/to/FINAL_DFT_TOP25.txt \\
+      --nominations /path/to/FINAL_DFT_TOP25.txt \\
       --output_dir ./soap_umap_figures
 
   # Reuse cached SOAP (fast re-runs for tweaking plots):
-  python figure_soap_umap.py \\
+  python soap_descriptors_umap.py \\
       --cif_dir ... --labeled_splits_dir ... --unlabeled_json ... \\
       --soap_cache ./soap_analysis/soap_descriptors.npz \\
       --output_dir ./soap_umap_figures
@@ -117,7 +117,7 @@ def _style_ax(ax):
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  SOAP computation (same as figure_soap_analysis.py, self-contained)
+#  SOAP computation (same as soap_validation.py, self-contained)
 # ──────────────────────────────────────────────────────────────────────
 def discover_cif_files(cif_dir):
     cifs = {}
@@ -413,7 +413,7 @@ def _flex_lookup(cid, lookup_dict):
     return None
 
 
-def load_phase6_top_predictions(filepath):
+def load_nominations(filepath):
     cids = []
     with open(filepath) as fh:
         for line in fh:
@@ -589,8 +589,8 @@ def panel_c_splits(coords, is_labeled, bandgaps, split_labels,
 # ══════════════════════════════════════════════════════════════════════
 #  Panel (d): Ensemble top nominations
 # ══════════════════════════════════════════════════════════════════════
-def panel_d_phase6(coords, is_labeled, bandgaps, threshold,
-                   phase6_mask, phase6_cids, output_dir):
+def panel_d_nominations(coords, is_labeled, bandgaps, threshold,
+                        nomination_mask, nomination_cids, output_dir):
     fig, ax = plt.subplots(figsize=(4.8, 4.0))
 
     # Background: unlabeled in gray, labeled in blue
@@ -612,19 +612,19 @@ def panel_d_phase6(coords, is_labeled, bandgaps, threshold,
                    zorder=3, alpha=0.85)
 
     # Ensemble nominations — big red stars
-    n_p6 = int(phase6_mask.sum())
-    if n_p6 > 0:
-        ax.scatter(coords[phase6_mask, 0], coords[phase6_mask, 1],
+    n_nom = int(nomination_mask.sum())
+    if n_nom > 0:
+        ax.scatter(coords[nomination_mask, 0], coords[nomination_mask, 1],
                    c="#e41a1c", s=100, marker="*",
                    edgecolors="black", linewidths=0.5,
                    zorder=5, alpha=0.95)
         # Annotate names
-        p6_coords = coords[phase6_mask]
-        for k, cid in enumerate(phase6_cids):
+        nom_coords = coords[nomination_mask]
+        for k, cid in enumerate(nomination_cids):
             short = cid.replace("_FSR", "")
             if len(short) > 12:
                 short = short[:10] + ".."
-            ax.annotate(short, (p6_coords[k, 0], p6_coords[k, 1]),
+            ax.annotate(short, (nom_coords[k, 0], nom_coords[k, 1]),
                         fontsize=4.5, fontweight="bold",
                         xytext=(4, 4), textcoords="offset points",
                         color="#333333",
@@ -643,11 +643,11 @@ def panel_d_phase6(coords, is_labeled, bandgaps, threshold,
                            markerfacecolor="#2171b5", markeredgecolor="black",
                            markeredgewidth=0.4, markersize=6,
                            label=f"Known positives ({n_pos})"))
-    if n_p6 > 0:
+    if n_nom > 0:
         _leg.append(Line2D([], [], marker="*", color="w",
                            markerfacecolor="#e41a1c", markeredgecolor="black",
                            markeredgewidth=0.5, markersize=8,
-                           label=f"Ensemble nominations ({n_p6})"))
+                           label=f"Ensemble nominations ({n_nom})"))
     ax.legend(handles=_leg, loc="upper right", frameon=True, fancybox=False,
               edgecolor="0.7", framealpha=0.95, borderpad=0.5,
               handletextpad=0.5, handlelength=1.4, fontsize=7,
@@ -673,8 +673,8 @@ def main():
     pa.add_argument("--labeled_splits_dir", required=True,
                     help="Dir with {train,val,test}_bandgaps_regression.json")
     pa.add_argument("--unlabeled_json", default=None,
-                    help="Phase6 test_bandgaps_regression.json (unlabeled IDs)")
-    pa.add_argument("--phase6_top_predictions", default=None,
+                    help="Unlabeled test_bandgaps_regression.json (unlabeled IDs)")
+    pa.add_argument("--nominations", default=None,
                     help="File with top-K ensemble CIF IDs (one per line)")
     pa.add_argument("--soap_cache", default=None,
                     help="Pre-computed soap_descriptors.npz (skip SOAP stage)")
@@ -714,9 +714,9 @@ def main():
     print(f"    Combined: {len(all_cids)} MOFs")
 
     # Ensemble nominations
-    phase6_cid_list = []
-    if args.phase6_top_predictions and os.path.exists(args.phase6_top_predictions):
-        phase6_cid_list = load_phase6_top_predictions(args.phase6_top_predictions)
+    nomination_cid_list = []
+    if args.nominations and os.path.exists(args.nominations):
+        nomination_cid_list = load_nominations(args.nominations)
 
     # ── 2. SOAP descriptors ───────────────────────────────────────────
     print(f"\n[2/4] SOAP descriptors ...")
@@ -751,18 +751,18 @@ def main():
                 split_labels[i] = sp
 
     # Ensemble nomination mask (flexible matching)
-    phase6_lookup = {c: True for c in phase6_cid_list}
-    phase6_mask = np.array([_flex_lookup(c, phase6_lookup) is not None
+    nomination_lookup = {c: True for c in nomination_cid_list}
+    nomination_mask = np.array([_flex_lookup(c, nomination_lookup) is not None
                             for c in soap_cids])
     # For annotation: keep order aligned with mask
-    phase6_present = [c for c in soap_cids
-                      if _flex_lookup(c, phase6_lookup) is not None]
+    nominations_present = [c for c in soap_cids
+                      if _flex_lookup(c, nomination_lookup) is not None]
 
     n_lab = int(is_labeled.sum())
     n_ulab = n - n_lab
     print(f"\n    Final: {n} MOFs ({n_lab} labeled, {n_ulab} unlabeled)")
-    if phase6_present:
-        print(f"    Ensemble nominations in SOAP: {len(phase6_present)}/{len(phase6_cid_list)}")
+    if nominations_present:
+        print(f"    Ensemble nominations in SOAP: {len(nominations_present)}/{len(nomination_cid_list)}")
 
     # Positive counts per split
     for sp in ("train", "val", "test"):
@@ -803,9 +803,9 @@ def main():
     panel_c_splits(coords, is_labeled, bandgaps, split_labels,
                    args.threshold, args.output_dir)
 
-    if phase6_present:
-        panel_d_phase6(coords, is_labeled, bandgaps, args.threshold,
-                       phase6_mask, phase6_present, args.output_dir)
+    if nominations_present:
+        panel_d_nominations(coords, is_labeled, bandgaps, args.threshold,
+                       nomination_mask, nominations_present, args.output_dir)
     else:
         print("    Skipping panel (d) — no ensemble nominations provided")
 
@@ -825,7 +825,7 @@ def main():
             "r_cut": SOAP_RCUT, "n_max": SOAP_NMAX,
             "l_max": SOAP_LMAX, "sigma": SOAP_SIGMA,
         },
-        "ensemble_nominations_found": len(phase6_present),
+        "ensemble_nominations_found": len(nominations_present),
     }
     sp = os.path.join(args.output_dir, "soap_umap_summary.json")
     with open(sp, "w") as fh:
@@ -834,7 +834,7 @@ def main():
     print(f"\n{'=' * 70}")
     print(f"  Done.  All outputs in {args.output_dir}/")
     print(f"  Panels: (a) labeled/unlabeled, (b) bandgap, (c) splits"
-          + (", (d) ensemble nominations" if phase6_present else ""))
+          + (", (d) ensemble nominations" if nominations_present else ""))
     print(f"{'=' * 70}")
 
 

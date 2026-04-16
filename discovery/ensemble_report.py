@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """
-Phase6 Ensemble Report (No Ground Truth)
-========================================
+Ensemble Report (No Ground Truth)
+==================================
 
-Ensembles NN and ML predictions on Phase6 (new test set, no labels), runs ALL
+Ensembles NN and ML predictions on unlabeled data (new test set, no labels), runs ALL
 ensemble methods (RRF, rank_avg, vote_topK, score_avg, weighted_rrf), produces
 per-combo top-25/50/100 lists, agreement analysis, and a well-documented report.
 
 Usage:
-  python phase6_ensemble_report.py \\
-    --base_dir /path/to/Phase6_QMOFinference \\
+  python ensemble_report.py \\
+    --base_dir /path/to/discovery \\
     --models exp364 exp370 smote_extra_trees smote_random_forest \\
     --output_dir ./ensemble_report
 
   # Auto-discover all models:
-  python phase6_ensemble_report.py --base_dir . --auto_discover --output_dir ./ensemble_report
+  python ensemble_report.py --base_dir . --auto_discover --output_dir ./ensemble_report
 
   # Exhaustive combos of size 2, 3, 4:
-  python phase6_ensemble_report.py --base_dir . --models exp364 exp370 smote_extra_trees \\
+  python ensemble_report.py --base_dir . --models exp364 exp370 smote_extra_trees \\
     --combo_size 2 3 4 --output_dir ./ensemble_report
 
   # Auto-discover + 4 explicit combos in one run:
-  python phase6_ensemble_report.py --base_dir . --auto_discover \\
+  python ensemble_report.py --base_dir . --auto_discover \\
     --combo exp364 exp370 --combo exp364 smote_random_forest \\
     --combo exp370 random_forest --combo exp364 exp370 smote_extra_trees \\
     --output_dir ./ensemble_report
@@ -44,7 +44,7 @@ for d in (SCRIPT_DIR, PROJECT_ROOT):
     if d not in sys.path:
         sys.path.insert(0, d)
 
-from ensemble_phase6_predictions import (
+from ensemble_predictions import (
     load_predictions_from_csv,
     find_predictions_csv,
     reciprocal_rank_fusion,
@@ -126,10 +126,10 @@ def _shorten_label(label):
 
 
 # =============================================================================
-# MODEL RESOLUTION (Phase6: test_predictions.csv or inference_predictions.csv)
+# MODEL RESOLUTION (Discovery: test_predictions.csv or inference_predictions.csv)
 # =============================================================================
 
-def resolve_phase6_models(base_dir, model_names):
+def resolve_discovery_models(base_dir, model_names):
     """
     Resolve short model names to dirs with test_predictions.csv or
     inference_predictions.csv. Same logic as resolve_models_to_dirs but checks
@@ -188,7 +188,7 @@ def resolve_phase6_models(base_dir, model_names):
     return resolved
 
 
-def auto_discover_phase6_models(base_dir):
+def auto_discover_models(base_dir):
     """Discover all experiments + embedding_classifiers with predictions."""
     dirs = []
     base_dir = os.path.abspath(base_dir or ".")
@@ -326,10 +326,10 @@ def write_report(
     vote_per_cid_by_k,
     top_k_list,
 ):
-    """Write phase6_ensemble_report.md."""
-    path = os.path.join(output_dir, "phase6_ensemble_report.md")
+    """Write ensemble_report.md."""
+    path = os.path.join(output_dir, "ensemble_report.md")
     lines = []
-    lines.append("# Phase6 Ensemble Report (No Ground Truth)")
+    lines.append("# Ensemble Report (No Ground Truth)")
     lines.append("")
     lines.append("This report shows ensemble rankings and agreement analysis.")
     lines.append("Only CIFs present in ALL model prediction files are ranked (intersection).")
@@ -512,10 +512,10 @@ def _run_slug(names):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Phase6 Ensemble Report (no ground truth)"
+        description="Ensemble Report (no ground truth)"
     )
     parser.add_argument("--base_dir", type=str, default=None,
-                        help="Base directory (Phase6 root)")
+                        help="Base directory (discovery root)")
     parser.add_argument("--models", type=str, nargs="*", default=None,
                         help="Model names: exp364, exp370, smote_extra_trees, etc.")
     parser.add_argument("--auto_discover", action="store_true",
@@ -546,16 +546,16 @@ def main():
     # Resolve prediction dirs
     pred_dirs = []
     if args.auto_discover:
-        pred_dirs = auto_discover_phase6_models(base_dir)
+        pred_dirs = auto_discover_models(base_dir)
         print(f"  Auto-discovered {len(pred_dirs)} prediction dirs")
     elif args.combo:
         all_combo_names = []
         for c in args.combo:
             all_combo_names.extend(c)
-        pred_dirs = list(dict.fromkeys(resolve_phase6_models(base_dir, all_combo_names)))
+        pred_dirs = list(dict.fromkeys(resolve_discovery_models(base_dir, all_combo_names)))
         print(f"  Resolved {len(pred_dirs)} models from --combo")
     elif args.models:
-        pred_dirs = resolve_phase6_models(base_dir, args.models)
+        pred_dirs = resolve_discovery_models(base_dir, args.models)
         print(f"  Resolved {len(pred_dirs)} models from --models")
     else:
         print("ERROR: Provide --models, --auto_discover, or --combo")
@@ -582,7 +582,7 @@ def main():
         if args.auto_discover:
             combos.append(sorted(all_models.keys()))
         for c in (args.combo or []):
-            resolved = resolve_phase6_models(base_dir, c)
+            resolved = resolve_discovery_models(base_dir, c)
             names = [os.path.basename(p.rstrip(os.path.sep)) for p in resolved]
             if all(n in all_models for n in names):
                 combos.append(sorted(names))
@@ -762,7 +762,7 @@ def main():
     print(f"  Saved {agreement_path}")
 
     print("=" * 70)
-    print("  Phase6 Ensemble Report complete.")
+    print("  Ensemble Report complete.")
     print(f"  Output directory: {output_dir}")
     print("=" * 70)
 

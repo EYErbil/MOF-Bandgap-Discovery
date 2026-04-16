@@ -4,7 +4,7 @@ Run NN inference using the best_es checkpoint in the current folder.
 
 Run from the experiment folder (same place as run.py):
   cd experiments/exp364_embsplit_d_fulltune
-  python ../../Phase6_QMOFinference/run_inference_from_cwd.py
+  python ../../discovery/run_inference_from_cwd.py
 
 Uses best_es checkpoint (Spearman-best). Writes inference_predictions.csv, inference_ranked.csv, top{N}_for_DFT.txt directly into the current folder.
 """
@@ -19,8 +19,8 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 if os.path.join(PROJECT_ROOT, "src") not in sys.path:
     sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
 
-# Override with --data_dir; default: data/phase6/ relative to repo root
-DEFAULT_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "phase6")
+# Override with --data_dir; default: data/unlabeled/ relative to repo root
+DEFAULT_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "unlabeled")
 
 TOP_K = 25
 

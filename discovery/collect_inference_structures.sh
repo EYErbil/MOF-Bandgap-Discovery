@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Collect MOF Structure Files for Phase6 Inference
+# Collect MOF Structure Files for Unlabeled Inference
 # =============================================================================
 #
 # This utility copies the three required MOFTransformer input files
@@ -9,9 +9,9 @@
 #
 # WHY IS THIS NEEDED?
 #   MOFTransformer expects structures organized as:
-#     data/phase6/test/<CIF_ID>.graphdata
-#     data/phase6/test/<CIF_ID>.grid
-#     data/phase6/test/<CIF_ID>.griddata16
+#     data/unlabeled/test/<CIF_ID>.graphdata
+#     data/unlabeled/test/<CIF_ID>.grid
+#     data/unlabeled/test/<CIF_ID>.griddata16
 #
 #   But your raw structures may be scattered across multiple directories
 #   (e.g., train/val/test splits from a prior experiment). This script
@@ -38,12 +38,12 @@ set -euo pipefail
 SOURCE_DIRS="${SOURCE_DIRS:-./data/raw/train ./data/raw/val ./data/raw/test}"
 
 # Where to copy collected files
-TARGET_DIR="${TARGET_DIR:-./data/phase6/test}"
+TARGET_DIR="${TARGET_DIR:-./data/unlabeled/test}"
 
 # JSON file mapping CIF_ID → bandgap (only the keys are used).
 # Create this manually or with a helper script:
 #   python -c "import json; d = {cif: 0.0 for cif in cif_list}; json.dump(d, open('file.json','w'))"
-JSON_PATH="${JSON_PATH:-./data/phase6/test_bandgaps_regression.json}"
+JSON_PATH="${JSON_PATH:-./data/unlabeled/test_bandgaps_regression.json}"
 
 # ---- Validation -------------------------------------------------------------
 

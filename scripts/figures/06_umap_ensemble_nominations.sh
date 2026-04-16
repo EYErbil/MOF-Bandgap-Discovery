@@ -31,7 +31,7 @@ python figures/umap_ensemble_nominations.py \
     --npz_exp370 "$FIGURES_OUTPUT/finetuned_umap_exp370_seed2/posttrain_embeddings.npz" \
     --npz_exp371 "$FIGURES_OUTPUT/finetuned_umap_exp371_seed3/posttrain_embeddings.npz" \
     --labeled_splits_dir "$SPLITS_DIR" \
-    --phase6_top_predictions "$NOMINATIONS" \
+    --nominations "$NOMINATIONS" \
     --output_dir "$OUTPUT" \
     --load_umap_cache \
     --save_umap_cache

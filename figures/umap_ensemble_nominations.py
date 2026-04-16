@@ -9,19 +9,19 @@ from fine-tuned PMTransformer embeddings instead of SOAP descriptors.
 
 Generates 3 separate plots — one per experiment (exp364, exp370, exp371).
 
-Usage (cluster):
-  python figure_posttrain_ensemble_umap.py \\
-      --npz_exp364 /scratch/users/eerbil20/KUIS-AI-MOF/Writingpaper/posttrain_umap_figures_exp364/posttrain_embeddings.npz \\
-      --npz_exp370 /scratch/users/eerbil20/KUIS-AI-MOF/Writingpaper/posttrain_umap_figures_exp370/posttrain_embeddings.npz \\
-      --npz_exp371 /scratch/users/eerbil20/KUIS-AI-MOF/Writingpaper/posttrain_umap_figures_exp371/posttrain_embeddings.npz \\
-      --labeled_splits_dir /scratch/users/eerbil20/KUIS-AI-MOF/new_splits/strategy_d_farthest_point \\
-      --phase6_top_predictions /path/to/FINAL_DFT_TOP25.txt \\
-      --output_dir ./posttrain_ensemble_figures
+Usage:
+  python figures/umap_ensemble_nominations.py \\
+      --npz_exp364 figures_output/finetuned_umap_exp364/posttrain_embeddings.npz \\
+      --npz_exp370 figures_output/finetuned_umap_exp370/posttrain_embeddings.npz \\
+      --npz_exp371 figures_output/finetuned_umap_exp371/posttrain_embeddings.npz \\
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --nominations data/unlabeled/nomination-SOAP/FINAL_TOP25_diverse.txt \\
+      --output_dir figures_output/ensemble_nominations
 
   # Plot-only with cached UMAP coords (fast re-runs):
-  python figure_posttrain_ensemble_umap.py \\
+  python umap_ensemble_nominations.py \\
       --npz_exp364 ... --npz_exp370 ... --npz_exp371 ... \\
-      --labeled_splits_dir ... --phase6_top_predictions ... \\
+      --labeled_splits_dir ... --nominations ... \\
       --output_dir ./posttrain_ensemble_figures \\
       --load_umap_cache
 
@@ -120,7 +120,7 @@ def _flex_lookup(cid, lookup_dict):
 #  Data loading
 # ──────────────────────────────────────────────────────────────────────
 def load_npz(npz_path):
-    """Load posttrain_embeddings.npz (same format as figure_posttrain_umap.py output)."""
+    """Load posttrain_embeddings.npz (same format as forward_finetuned_umap.py output)."""
     data = np.load(npz_path, allow_pickle=True)
     cif_ids = [x.decode("utf-8") if isinstance(x, bytes) else str(x)
                for x in data["cif_ids"]]
@@ -151,7 +151,7 @@ def load_split_labels(splits_dir):
     return labels, assignments
 
 
-def load_phase6_top_predictions(filepath):
+def load_nominations(filepath):
     """Load ensemble top-K CIF IDs (one per line)."""
     cids = []
     with open(filepath) as fh:
@@ -183,7 +183,7 @@ def compute_umap(embeddings, n_neighbors=30, min_dist=0.3, seed=42):
 #  Panel: Ensemble nominations (same as SOAP panel d)
 # ──────────────────────────────────────────────────────────────────────
 def panel_ensemble_nominations(coords, is_labeled, bandgaps, threshold,
-                               phase6_mask, phase6_cids, output_dir,
+                               nomination_mask, nomination_cids, output_dir,
                                exp_label, filename_prefix):
     """
     Same plot as SOAP UMAP panel (d):
@@ -212,19 +212,19 @@ def panel_ensemble_nominations(coords, is_labeled, bandgaps, threshold,
                    zorder=3, alpha=0.85)
 
     # Ensemble nominations — big red stars
-    n_p6 = int(phase6_mask.sum())
-    if n_p6 > 0:
-        ax.scatter(coords[phase6_mask, 0], coords[phase6_mask, 1],
+    n_nom = int(nomination_mask.sum())
+    if n_nom > 0:
+        ax.scatter(coords[nomination_mask, 0], coords[nomination_mask, 1],
                    c="#e41a1c", s=100, marker="*",
                    edgecolors="black", linewidths=0.5,
                    zorder=5, alpha=0.95)
         # Annotate names
-        p6_coords = coords[phase6_mask]
-        for k, cid in enumerate(phase6_cids):
+        nom_coords = coords[nomination_mask]
+        for k, cid in enumerate(nomination_cids):
             short = cid.replace("_FSR", "")
             if len(short) > 12:
                 short = short[:10] + ".."
-            ax.annotate(short, (p6_coords[k, 0], p6_coords[k, 1]),
+            ax.annotate(short, (nom_coords[k, 0], nom_coords[k, 1]),
                         fontsize=4.5, fontweight="bold",
                         xytext=(4, 4), textcoords="offset points",
                         color="#333333",
@@ -243,11 +243,11 @@ def panel_ensemble_nominations(coords, is_labeled, bandgaps, threshold,
                            markerfacecolor="#2171b5", markeredgecolor="black",
                            markeredgewidth=0.4, markersize=6,
                            label=f"Known positives ({n_pos})"))
-    if n_p6 > 0:
+    if n_nom > 0:
         _leg.append(Line2D([], [], marker="*", color="w",
                            markerfacecolor="#e41a1c", markeredgecolor="black",
                            markeredgewidth=0.5, markersize=8,
-                           label=f"Ensemble nominations ({n_p6})"))
+                           label=f"Ensemble nominations ({n_nom})"))
     ax.legend(handles=_leg, loc="upper right", frameon=True, fancybox=False,
               edgecolor="0.7", framealpha=0.95, borderpad=0.5,
               handletextpad=0.5, handlelength=1.4, fontsize=7,
@@ -265,7 +265,7 @@ def panel_ensemble_nominations(coords, is_labeled, bandgaps, threshold,
 # ──────────────────────────────────────────────────────────────────────
 def process_experiment(npz_path, exp_name, exp_label,
                        labeled_bg, labeled_splits_dict,
-                       phase6_cid_list, args):
+                       nomination_cid_list, args):
     """Load NPZ, compute UMAP, generate ensemble nominations panel."""
     print(f"\n{'─' * 60}")
     print(f"  Processing {exp_name}")
@@ -291,18 +291,18 @@ def process_experiment(npz_path, exp_name, exp_label,
                          for i, c in enumerate(cids)], dtype=float)
 
     # Ensemble nomination mask (flexible matching)
-    phase6_lookup = {c: True for c in phase6_cid_list}
-    phase6_mask = np.array([_flex_lookup(c, phase6_lookup) is not None
-                            for c in cids])
-    phase6_present = [c for c in cids
-                      if _flex_lookup(c, phase6_lookup) is not None]
+    nomination_lookup = {c: True for c in nomination_cid_list}
+    nomination_mask = np.array([_flex_lookup(c, nomination_lookup) is not None
+                                for c in cids])
+    nominations_present = [c for c in cids
+                           if _flex_lookup(c, nomination_lookup) is not None]
 
     n_lab = int(is_labeled.sum())
     n_ulab = len(cids) - n_lab
     n_pos = int((is_labeled & (bandgaps < args.threshold)).sum())
     print(f"    {len(cids)} MOFs ({n_lab} labeled, {n_ulab} unlabeled)")
     print(f"    Known positives (< {args.threshold} eV): {n_pos}")
-    print(f"    Ensemble nominations matched: {len(phase6_present)}/{len(phase6_cid_list)}")
+    print(f"    Ensemble nominations matched: {len(nominations_present)}/{len(nomination_cid_list)}")
 
     # UMAP — try cache first
     cache_path = os.path.join(args.output_dir, f"umap_cache_{exp_name}.npz")
@@ -350,21 +350,21 @@ def process_experiment(npz_path, exp_name, exp_label,
     n_skip = int((~valid).sum())
     if n_skip > 0:
         print(f"    Skipping {n_skip} MOFs with invalid embeddings/coords")
-        # Rebuild phase6_present from filtered cids
+        # Rebuild nominations_present from filtered cids
         valid_cids = [c for c, v in zip(cids, valid) if v]
         coords      = coords[valid]
         is_labeled  = is_labeled[valid]
         bandgaps    = bandgaps[valid]
-        phase6_mask = phase6_mask[valid]
-        phase6_present = [c for c in valid_cids
-                          if _flex_lookup(c, phase6_lookup) is not None]
+        nomination_mask = nomination_mask[valid]
+        nominations_present = [c for c in valid_cids
+                          if _flex_lookup(c, nomination_lookup) is not None]
         cids = valid_cids
 
     # Generate the panel
     filename = f"posttrain_ensemble_{exp_name}"
     panel_ensemble_nominations(
         coords, is_labeled, bandgaps, args.threshold,
-        phase6_mask, phase6_present, args.output_dir,
+        nomination_mask, nominations_present, args.output_dir,
         exp_label, filename)
 
     # Per-experiment summary
@@ -374,8 +374,8 @@ def process_experiment(npz_path, exp_name, exp_label,
         "labeled": int(is_labeled.sum()),
         "unlabeled": len(cids) - int(is_labeled.sum()),
         "known_positives": int((is_labeled & (bandgaps < args.threshold)).sum()),
-        "ensemble_nominations_found": len(phase6_present),
-        "ensemble_nominations_total": len(phase6_cid_list),
+        "ensemble_nominations_found": len(nominations_present),
+        "ensemble_nominations_total": len(nomination_cid_list),
         "embedding_dim": int(embs.shape[1]),
         "umap_params": {
             "n_neighbors": args.n_neighbors,
@@ -407,7 +407,7 @@ def main():
                     help="posttrain_embeddings.npz for exp371")
     pa.add_argument("--labeled_splits_dir", required=True,
                     help="Dir with {train,val,test}_bandgaps_regression.json")
-    pa.add_argument("--phase6_top_predictions", required=True,
+    pa.add_argument("--nominations", required=True,
                     help="File with top-25 ensemble CIF IDs (one per line)")
     pa.add_argument("--output_dir", default="./posttrain_ensemble_figures")
     pa.add_argument("--threshold", type=float, default=1.0,
@@ -436,8 +436,8 @@ def main():
     print(f"    Total labeled: {len(labeled_bg)}")
 
     print("\n[2] Loading ensemble nominations ...")
-    phase6_cid_list = load_phase6_top_predictions(
-        os.path.abspath(args.phase6_top_predictions))
+    nomination_cid_list = load_nominations(
+        os.path.abspath(args.nominations))
 
     # ── Process each experiment ───────────────────────────────────────
     experiments = [
@@ -451,7 +451,7 @@ def main():
         process_experiment(
             os.path.abspath(npz_path), exp_name, exp_label,
             labeled_bg, labeled_splits_dict,
-            phase6_cid_list, args)
+            nomination_cid_list, args)
 
     print(f"\n{'=' * 70}")
     print(f"  Done.  All outputs in {args.output_dir}/")

@@ -32,7 +32,7 @@ mkdir -p logs
 section "MODEL COMPARISON (NN vs ML)"
 
 python discovery/plot_model_comparison.py \
-    --embeddings_npz "$DISCOVERY_DATA/embedding_analysis/Phase6_embeddings.npz" \
+    --embeddings_npz "$DISCOVERY_DATA/embedding_analysis/unlabeled_embeddings.npz" \
     --top_k 25
 
 section "COMPLETE"

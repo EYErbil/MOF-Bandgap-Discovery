@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Extract Phase6 embeddings using RAW, non-finetuned MOFTransformer/pmtransformer.
+Extract unlabeled embeddings using RAW, non-finetuned MOFTransformer/pmtransformer.
 
 Same logic as analyze_embeddings.py (create_model + extract_embeddings) — self-contained,
 no import from analyze_embeddings (which may not exist on cluster).
 
 All outputs go into embedding_analysis (JUST LIKE analyze_embeddings.py):
-  - Phase6_embeddings.npz   (cif_ids, embeddings, bandgaps, splits=test)
-  - embedding_umap_phase6.png       (UMAP plot — compare with embedding_umap_pretrained.png)
-  - similarity_heatmap_phase6.png   (similarity heatmap — compare with similarity_heatmap_pretrained.png)
+  - unlabeled_embeddings.npz   (cif_ids, embeddings, bandgaps, splits=test)
+  - embedding_umap_unlabeled.png       (UMAP plot — compare with embedding_umap_pretrained.png)
+  - similarity_heatmap_unlabeled.png   (similarity heatmap — compare with similarity_heatmap_pretrained.png)
 
 Usage:
-  python Phase6_QMOFinference/extract_phase6_embeddings_pretrained.py \\
-    --data_dir Phase6_QMOFinference/Processed-data \\
+  python data_preparation/extract_unlabeled_embeddings.py \\
+    --data_dir data_preparation/Processed-data \\
     --output_dir embedding_analysis
 """
 
@@ -39,7 +39,7 @@ from moftransformer.utils.validation import get_valid_config
 def create_model(config, checkpoint_path=None):
     """Same as analyze_embeddings.py — pretrained MOFTransformer when checkpoint_path is None."""
     if checkpoint_path and os.path.exists(checkpoint_path):
-        raise NotImplementedError("Fine-tuned checkpoint not used for Phase6 (pretrained only)")
+        raise NotImplementedError("Fine-tuned checkpoint not used for unlabeled set (pretrained only)")
     model = Module(config)
     model.eval()
     return model
@@ -240,7 +240,7 @@ def plot_similarity_heatmap(cif_ids, embeddings, bandgaps, splits, threshold, ou
     ax.set_yticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=90, fontsize=6)
     ax.set_yticklabels(labels, fontsize=6)
-    ax.set_title(f'Pairwise Cosine Similarity — All {len(pos_idx)} Positives (Phase6)\n'
+    ax.set_title(f'Pairwise Cosine Similarity — All {len(pos_idx)} Positives (unlabeled)\n'
                  f'(tr=train, va=val, te=test | CIF_ID | bandgap eV)', fontsize=12)
     plt.colorbar(im, ax=ax, label='Cosine Similarity')
 
@@ -276,11 +276,11 @@ def ensure_test_json(data_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Extract Phase6 embeddings (same logic as analyze_embeddings)"
+        description="Extract unlabeled embeddings (same logic as analyze_embeddings)"
     )
     parser.add_argument("--data_dir", type=str,
                         default=os.path.join(os.path.dirname(__file__), "Processed-data"),
-                        help="Phase6 Processed-data directory")
+                        help="Unlabeled Processed-data directory")
     parser.add_argument("--splits_dir", type=str, default=None,
                         help="Splits dir (default: same as data_dir)")
     parser.add_argument("--output_dir", type=str, default="embedding_analysis2",
@@ -326,7 +326,7 @@ def main():
     del model
     torch.cuda.empty_cache() if device == "cuda" else None
 
-    npz_path = os.path.join(output_dir, "Phase6_embeddings.npz")
+    npz_path = os.path.join(output_dir, "unlabeled_embeddings.npz")
     np.savez_compressed(
         npz_path,
         cif_ids=np.array(cif_ids),
@@ -334,14 +334,14 @@ def main():
         bandgaps=bandgaps,
         splits=np.array(split_labels),
     )
-    print(f"  Saved: {npz_path} ({len(cif_ids)} Phase6 structures, dim={embeddings.shape[1]})")
+    print(f"  Saved: {npz_path} ({len(cif_ids)} unlabeled structures, dim={embeddings.shape[1]})")
 
     # Same PNG outputs as analyze_embeddings.py — so you can compare datasets visually
     print(f"\n  Generating UMAP and similarity heatmap (like analyze_embeddings)...")
     plot_umap(embeddings, bandgaps, split_labels, args.threshold,
-              os.path.join(output_dir, "embedding_umap_phase6.png"))
+              os.path.join(output_dir, "embedding_umap_unlabeled.png"))
     plot_similarity_heatmap(cif_ids, embeddings, bandgaps, split_labels, args.threshold,
-                            os.path.join(output_dir, "similarity_heatmap_phase6.png"))
+                            os.path.join(output_dir, "similarity_heatmap_unlabeled.png"))
 
     print(f"\n  DONE. All outputs in: {output_dir}")
 

@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
-Phase6 Model Comparison — NN vs ML Top-K on UMAP embedding space.
+Model Comparison — NN vs ML Top-K on UMAP embedding space.
 
-Loads Phase6 embeddings (.npz), ranks each model's predictions, and
+Loads unlabeled embeddings (.npz), ranks each model's predictions, and
 visualises where each model's top-K candidates sit relative to the full
 ~10 K structure cloud.  No re-extraction needed — just name-matching.
 
 Outputs (in --output_dir):
-  phase6_umap_per_model_top{K}.png   — grid of subplots, one per model
-  phase6_nn_vs_ml_top{K}.png         — NN-union vs ML-union consensus
-  phase6_nn_vs_ml_density_top{K}.png — side-by-side vote-count density
-  phase6_jaccard_top{K}.png          — pairwise Jaccard heatmap
-  model_comparison_report_top{K}.txt — detailed text report
-  umap_coords_phase6.npz             — cached 2-D UMAP coords
+  discovery_umap_per_model_top{K}.png   — grid of subplots, one per model
+  discovery_nn_vs_ml_top{K}.png         — NN-union vs ML-union consensus
+  discovery_nn_vs_ml_density_top{K}.png — side-by-side vote-count density
+  discovery_jaccard_top{K}.png          — pairwise Jaccard heatmap
+  model_comparison_report_top{K}.txt    — detailed text report
+  umap_coords_discovery.npz             — cached 2-D UMAP coords
 
 Usage:
-  python plot_phase6_model_comparison.py                       # defaults
-  python plot_phase6_model_comparison.py --top_k 50            # top-50
-  python plot_phase6_model_comparison.py --all_ml              # all 31 ML classifiers
-  python plot_phase6_model_comparison.py --ml_methods smote_extra_trees random_forest
+  python plot_model_comparison.py                       # defaults
+  python plot_model_comparison.py --top_k 50            # top-50
+  python plot_model_comparison.py --all_ml              # all 31 ML classifiers
+  python plot_model_comparison.py --ml_methods smote_extra_trees random_forest
 """
 
 import os
@@ -31,7 +31,7 @@ from pathlib import Path
 from collections import defaultdict
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_EMB = SCRIPT_DIR / "embedding_analysis" / "Phase6_embeddings.npz"
+DEFAULT_EMB = SCRIPT_DIR / "embedding_analysis" / "unlabeled_embeddings.npz"
 DEFAULT_EXPERIMENTS = SCRIPT_DIR / "experiments"
 DEFAULT_CLASSIFIERS = (
     SCRIPT_DIR / "embedding_classifiers" / "strategy_d_farthest_point"
@@ -44,7 +44,7 @@ DEFAULT_OUTPUT = SCRIPT_DIR / "model_comparison"
 # ═══════════════════════════════════════════════════════════════════════
 
 def load_embeddings(npz_path):
-    """Load Phase6 embeddings .npz → (cif_ids, embeddings)."""
+    """Load unlabeled embeddings .npz → (cif_ids, embeddings)."""
     data = np.load(npz_path, allow_pickle=True)
     cif_ids = data["cif_ids"]
     embeddings = data["embeddings"]
@@ -329,7 +329,7 @@ def plot_per_model_grid(coords, cif_ids, models, top_k, output_path):
         r, c = divmod(idx, ncols)
         axes[r][c].set_visible(False)
 
-    fig.suptitle(f"Phase6 UMAP — Per-Model Top-{top_k} Candidates",
+    fig.suptitle(f"Discovery UMAP — Per-Model Top-{top_k} Candidates",
                  fontsize=14, y=1.01)
     plt.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
@@ -382,7 +382,7 @@ def plot_nn_vs_ml_consensus(coords, cif_ids, nn_models, ml_models,
 
     ax.legend(fontsize=12, loc="upper right", framealpha=0.9)
     ax.set_title(
-        f"Phase6 UMAP — NN vs ML Top-{top_k} Consensus\n"
+        f"Discovery UMAP — NN vs ML Top-{top_k} Consensus\n"
         f"NN union: {len(nn_union)} | ML union: {len(ml_union)} "
         f"| Overlap: {len(both)}",
         fontsize=13)
@@ -439,7 +439,7 @@ def plot_nn_vs_ml_sidebyside(coords, cif_ids, nn_models, ml_models,
         ax.set_xticks([])
         ax.set_yticks([])
 
-    fig.suptitle(f"Phase6 UMAP — NN vs ML Vote Density (Top-{top_k})",
+    fig.suptitle(f"Discovery UMAP — NN vs ML Vote Density (Top-{top_k})",
                  fontsize=14)
     plt.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
@@ -482,7 +482,7 @@ def plot_jaccard_heatmap(stats, top_k, models, output_path):
 def write_report(models, stats, top_k, output_path):
     L = []
     L.append("=" * 70)
-    L.append(f"Phase6 Model Comparison Report  (top-{top_k})")
+    L.append(f"Model Comparison Report  (top-{top_k})")
     L.append("=" * 70)
     L.append("")
 
@@ -624,7 +624,7 @@ def write_report(models, stats, top_k, output_path):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Phase6 NN vs ML top-K investigation on UMAP")
+        description="Discovery NN vs ML top-K investigation on UMAP")
     parser.add_argument("--embeddings_npz", type=str,
                         default=str(DEFAULT_EMB))
     parser.add_argument("--experiments_dir", type=str,
@@ -667,7 +667,7 @@ def main():
     all_models = {**nn_models, **ml_models}
 
     # ── UMAP ──────────────────────────────────────────────────────────
-    umap_cache = output_dir / "umap_coords_phase6.npz"
+    umap_cache = output_dir / "umap_coords_discovery.npz"
     coords = compute_or_load_umap(embeddings, umap_cache)
 
     # ── Stats ─────────────────────────────────────────────────────────
@@ -680,19 +680,19 @@ def main():
 
     plot_per_model_grid(
         coords, cif_ids, all_models, k,
-        output_dir / f"phase6_umap_per_model_top{k}.png")
+        output_dir / f"discovery_umap_per_model_top{k}.png")
 
     if nn_models and ml_models:
         plot_nn_vs_ml_consensus(
             coords, cif_ids, nn_models, ml_models, k,
-            output_dir / f"phase6_nn_vs_ml_top{k}.png")
+            output_dir / f"discovery_nn_vs_ml_top{k}.png")
         plot_nn_vs_ml_sidebyside(
             coords, cif_ids, nn_models, ml_models, k,
-            output_dir / f"phase6_nn_vs_ml_density_top{k}.png")
+            output_dir / f"discovery_nn_vs_ml_density_top{k}.png")
 
     plot_jaccard_heatmap(
         stats, k, all_models,
-        output_dir / f"phase6_jaccard_top{k}.png")
+        output_dir / f"discovery_jaccard_top{k}.png")
 
     write_report(
         all_models, stats, k,

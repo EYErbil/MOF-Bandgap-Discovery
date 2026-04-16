@@ -3,8 +3,10 @@
 # =============================================================================
 # Install: pip install -r requirements.txt
 #
-# NOTE: moftransformer has its own dependencies (PyTorch, PyG, etc.).
-#       Install it first following https://github.com/hspark1212/MOFTransformer
+# NOTE: moftransformer requires PyTorch and PyTorch Geometric to be installed
+#       first. Follow the MOFTransformer install guide to get the correct
+#       torch/PyG versions for your CUDA setup, then run this requirements file:
+#         https://github.com/hspark1212/MOFTransformer
 # =============================================================================
 
 # --- Core ML / DL -----------------------------------------------------------

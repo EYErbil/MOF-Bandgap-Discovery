@@ -12,23 +12,23 @@ Four separate panels saved as individual PNG + SVG:
 
 Recommended workflow
 --------------------
-1. Run extract_all_embeddings_unified.py ONCE to get aligned embeddings
+1. Run forward_pretrained_embeddings.py ONCE to get aligned embeddings
    for all ~20K MOFs in a single forward pass.
 2. Run this script with --merged_embeddings pointing to that NPZ.
 
 Usage
 -----
   # From unified embeddings (RECOMMENDED):
-  python figure2_chemical_space_umap.py \\
+  python umap_pretrained.py \\
       --merged_embeddings ./single_forward_embedding_total/all_embeddings.npz \\
       --labeled_splits_dir .../new_splits/strategy_d_farthest_point \\
       --qmof_csv .../qmof.csv \\
       --output_dir ./paper_figures
 
   # From separate embeddings (legacy, alignment risk):
-  python figure2_chemical_space_umap.py \\
-      --phase5_embeddings .../embeddings_pretrained.npz \\
-      --phase6_embeddings .../Phase6_embeddings.npz \\
+  python umap_pretrained.py \\
+      --labeled_embeddings .../embeddings_pretrained.npz \\
+      --unlabeled_embeddings .../unlabeled_embeddings.npz \\
       --labeled_splits_dir .../new_splits/strategy_d_farthest_point \\
       --qmof_csv .../qmof.csv \\
       --output_dir ./paper_figures
@@ -515,12 +515,12 @@ def main():
 
     # -- embeddings --
     g = pa.add_argument_group("Embedding inputs (EITHER merged OR labeled+unlabeled)")
-    g.add_argument("--phase5_embeddings", type=str, default=None,
+    g.add_argument("--labeled_embeddings", type=str, default=None,
                    help="embeddings_pretrained.npz for labeled MOFs")
-    g.add_argument("--phase6_embeddings", type=str, default=None,
+    g.add_argument("--unlabeled_embeddings", type=str, default=None,
                    help="Embeddings .npz for unlabeled MOFs")
     g.add_argument("--merged_embeddings", type=str, default=None,
-                   help="Unified NPZ from extract_all_embeddings_unified.py "
+                   help="Unified NPZ from forward_pretrained_embeddings.py "
                         "(RECOMMENDED)")
 
     # -- labels --
@@ -586,13 +586,13 @@ def main():
         split_labels = np.array([labeled_splits_dict.get(c, "unlabeled")
                                  for c in cids])
 
-    elif args.phase5_embeddings and args.phase6_embeddings:
-        print(f"       Labeled: {args.phase5_embeddings}")
-        c5, e5, b5, _, _ = load_npz_embeddings(args.phase5_embeddings)
+    elif args.labeled_embeddings and args.unlabeled_embeddings:
+        print(f"       Labeled: {args.labeled_embeddings}")
+        c5, e5, b5, _, _ = load_npz_embeddings(args.labeled_embeddings)
         print(f"         -> {len(c5)} MOFs, dim {e5.shape[1]}")
 
-        print(f"       Unlabeled: {args.phase6_embeddings}")
-        c6, e6, b6, _, _ = load_npz_embeddings(args.phase6_embeddings)
+        print(f"       Unlabeled: {args.unlabeled_embeddings}")
+        c6, e6, b6, _, _ = load_npz_embeddings(args.unlabeled_embeddings)
         print(f"         -> {len(c6)} MOFs, dim {e6.shape[1]}")
 
         seen = set()
@@ -625,10 +625,10 @@ def main():
               f"({is_labeled.sum()} labeled, {(~is_labeled).sum()} unlabeled)")
         print("       *** WARNING: separate forward passes — embeddings may "
               "not be perfectly aligned. Consider using "
-              "extract_all_embeddings_unified.py instead. ***")
+              "forward_pretrained_embeddings.py instead. ***")
     else:
         sys.exit("ERROR: provide --merged_embeddings  OR  "
-                 "--phase5_embeddings + --phase6_embeddings")
+                 "--labeled_embeddings + --unlabeled_embeddings")
 
     # ── 3. UMAP ──────────────────────────────────────────────────────
     if args.load_cache and os.path.exists(args.load_cache):

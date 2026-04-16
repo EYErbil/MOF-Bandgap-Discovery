@@ -16,7 +16,7 @@ Verification: SOAP pairwise distances and UMAP visualization.
 Usage
 -----
   python nominate_diverse_dft.py \
-    --embeddings_path  /path/to/Phase6_embeddings.npz \
+    --embeddings_path  /path/to/unlabeled_embeddings.npz \
     --prediction_csvs  exp364=/path/to/exp364/inference_predictions.csv \
                        exp370=/path/to/exp370/inference_predictions.csv \
                        exp371=/path/to/exp371/inference_predictions.csv \

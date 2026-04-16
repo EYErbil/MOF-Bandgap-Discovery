@@ -23,23 +23,30 @@ These two approaches capture complementary signal: the trees operate on frozen g
 ## Pipeline Overview
 
 ```
-  STEP 1   Extract pretrained 768-dim embeddings (PMTransformer)
-    |       Create Strategy D farthest-point train/val/test splits
+  STEP 0   Preprocess CIF files into MOFTransformer format (.grid, .griddata16, .graphdata)
+    v
+  STEP 1   Extract pretrained 768-dim embeddings → Strategy D farthest-point splits
     v
   STEP 2   Fine-tune PMTransformer for bandgap regression (3 seeds)
+    |        ↳ trains on raw MOFTransformer files, NOT on extracted embeddings
     v
-  STEP 3   Train 15+ sklearn classifiers + kNN baselines on pretrained embeddings
+  STEP 3   Train 15+ sklearn classifiers + kNN on pretrained embeddings
+    |        ↳ uses the frozen 768-dim embeddings from Step 1
     v
   STEP 4   Exhaustive ensemble ablation (all 2/3/4-model combos, optimise recall@50)
     v
   STEP 5   Generate comprehensive analysis report (15+ figures)
     v
-  STEP 6   Discovery -- deploy models on new unlabeled MOFs, RRF consensus ranking
+  ─ ─ ─ ─ ─ ─  labeled set complete, now switch to unlabeled set  ─ ─ ─ ─ ─ ─
+    v
+  STEP 6   Discovery -- deploy models on ~10K NEW unlabeled MOFs, RRF ranking
     v
   STEP 7   Diversity-aware DFT nomination (cluster + MMR + SOAP verification)
 ```
 
-**Steps 1-5** validate the ensemble on ~10K MOFs with known HSE bandgaps (only ~76 positives across all splits -- a needle-in-a-haystack retrieval problem). **Steps 6-7** deploy the validated models on ~10K unlabeled MOFs and select the final 25 candidates for DFT calculation, prioritizing both prediction confidence and structural diversity.
+> **Labeled vs. unlabeled sets.** Steps 1-5 work on ~10K MOFs with known HSE bandgaps (only ~76 positives -- a needle-in-a-haystack retrieval problem). Steps 6-7 work on a **completely separate** set of ~10K unlabeled MOFs that the models have never seen during training, validation, or testing. These are not the test split from Steps 1-5; they are new structures for which we want to discover low-bandgap candidates.
+
+> **NN vs. ML data flow.** The fine-tuned NN (Step 2) reads the raw preprocessed MOF files directly -- MOFTransformer handles tokenisation internally. The ML classifiers (Step 3) train on the frozen 768-dim pretrained embeddings extracted in Step 1. Both paths use the same train/val/test split.
 
 ---
 
@@ -113,10 +120,11 @@ MOF-Bandgap-Discovery/
 
 | Requirement | Details |
 |-------------|---------|
-| SLURM cluster | GPU nodes with CUDA 12.x (Steps 1, 2, 6). Steps 3-5 are CPU-only. |
+| SLURM cluster | GPU nodes with CUDA 12.x (Steps 0-2, 6, F1, F3). Steps 3-5, 7 are CPU-only. |
 | Python 3.9+ | Tested with Python 3.9.5 |
-| MOFTransformer | `pip install moftransformer` ([docs](https://github.com/hspark1212/MOFTransformer)) |
-| MOF structure files | Preprocessed into MOFTransformer format (`.grid`, `.griddata16`, `.graphdata`). See [data/README.md](data/README.md). |
+| MOFTransformer | `pip install moftransformer` ([docs](https://github.com/hspark1212/MOFTransformer)) -- needed for Step 0 (preprocessing) and Steps 1-2, 6 (forward passes). |
+| MOF structure files | Raw CIF files; preprocessed into MOFTransformer format in Step 0. See [data/README.md](data/README.md). |
+| `qmof.csv` *(optional)* | QMOF Database metadata for metal center analysis in figures F2/F3. Download from the [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF) and place at `data/qmof.csv`. |
 
 ### Installation
 
@@ -124,8 +132,15 @@ MOF-Bandgap-Discovery/
 git clone https://github.com/EYErbil/MOF-Bandgap-Discovery.git
 cd MOF-Bandgap-Discovery
 python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+
+# 1. Install PyTorch + PyTorch Geometric for your CUDA version first
+#    (see https://pytorch.org/get-started and https://pytorch-geometric.readthedocs.io)
+
+# 2. Install MOFTransformer (depends on PyTorch/PyG)
 pip install moftransformer
+
+# 3. Install remaining dependencies
+pip install -r requirements.txt
 ```
 
 ### Configuration
@@ -139,7 +154,7 @@ export SLURM_PARTITION_GPU="ai"
 export MODULE_LOADS="cuda/12.3 cudnn/8.9.5 python/3.9.5"
 ```
 
-Each SLURM script also has `#SBATCH` headers for partition/account/QoS. Edit those to match your cluster if the partition names differ.
+Each SLURM script also has `#SBATCH` headers for partition/account/QoS hardcoded at the top of the file (e.g., `#SBATCH --account=ai`). Changing `config.sh` alone does **not** update these headers. If your cluster uses different partition or account names, edit both `config.sh` **and** the `#SBATCH` lines at the top of each script you plan to run.
 
 ---
 
@@ -147,13 +162,19 @@ Each SLURM script also has `#SBATCH` headers for partition/account/QoS. Edit tho
 
 Submit each step after the previous one completes. Check job status with `squeue -u $USER`.
 
+### Step 0: Preprocess CIF Files (one-time, prerequisite)
+
+Before anything else, convert your raw CIF files into MOFTransformer's input format. This produces three files per MOF: `.grid` (energy grid), `.griddata16` (voxelised grid), and `.graphdata` (atom graph). Follow the [MOFTransformer preprocessing guide](https://github.com/hspark1212/MOFTransformer) -- the `prepare_data` utility handles this.
+
+Place all preprocessed files under `data/raw/` (see [data/README.md](data/README.md) for the expected layout).
+
 ### Step 1: Extract Embeddings and Create Splits
 
 ```bash
 sbatch scripts/01_extract_embeddings.sh    # GPU, ~2-4h
 ```
 
-Extracts 768-dim CLS embeddings from the pretrained PMTransformer for every MOF. Creates **Strategy D** train/val/test splits using farthest-point sampling in embedding space, ensuring every positive in val/test has a structurally similar positive in training.
+Runs a forward pass of the **pretrained** (non-fine-tuned) PMTransformer on every labeled MOF and saves the 768-dim CLS embeddings to `data/embeddings/embeddings_pretrained.npz`. These embeddings serve two purposes: (1) input features for the ML classifiers in Step 3, and (2) the basis for **Strategy D** farthest-point train/val/test splitting, which ensures every positive in val/test has a structurally similar positive in training. The NN in Step 2 does **not** use these embeddings -- it reads the raw preprocessed MOF files directly.
 
 ### Step 2: Train Neural Network Regressors
 
@@ -193,10 +214,13 @@ Produces 15+ figures: recall heatmaps, complementarity analysis, confusion matri
 sbatch scripts/06_run_discovery.sh         # GPU, ~4-8h
 ```
 
-Deploys all trained models on a new unlabeled MOF dataset (~10K structures). Extracts embeddings, runs ML and NN inference, then fuses predictions via RRF to produce a consensus ranking. Before running, prepare the data:
+> **This uses a completely separate MOF set.** The ~10K unlabeled structures here were never part of the train/val/test split used in Steps 1-5.
 
-1. Place MOF structure files in `data/unlabeled/` (see [data/README.md](data/README.md))
-2. Create `data/unlabeled/test_bandgaps_regression.json` mapping CIF IDs to placeholder bandgap values (`0.0`)
+Deploys all trained models on unlabeled MOFs. The script: (a) extracts pretrained embeddings for the unlabeled set → `unlabeled_embeddings.npz`, (b) runs ML inference using saved sklearn models, (c) runs NN inference using each fine-tuned checkpoint, and (d) fuses predictions via RRF to produce a consensus ranking. Before running, prepare the data:
+
+1. Preprocess unlabeled CIF files into MOFTransformer format (Step 0)
+2. Place them in `data/unlabeled/test/` (or use `discovery/collect_inference_structures.sh` to gather them)
+3. Create `data/unlabeled/test_bandgaps_regression.json` mapping CIF IDs to placeholder bandgap values (`0.0`)
 
 Edit `NN_EXPERIMENTS` and `ML_METHODS` at the top of the script to select which models to deploy.
 
@@ -272,7 +296,7 @@ The ensemble ablation (Step 4) automatically discovers all experiments with `tes
 sbatch scripts/optional/run_umap_analysis.sh        # UMAP embedding visualisations
 sbatch scripts/optional/run_verify_ml.sh             # ML performance heatmap
 sbatch scripts/optional/run_reinfer.sh               # Recompute NN predictions from checkpoints
-sbatch scripts/optional/run_screening.sh             # Structural screening with PORMAKE
+sbatch scripts/optional/run_screening.sh             # Two-signal candidate screening (NN + kNN)
 sbatch scripts/optional/run_discovery_ml_only.sh     # ML-only inference (CPU, no GPU)
 sbatch scripts/optional/run_discovery_nn_only.sh     # NN-only inference (GPU)
 sbatch scripts/optional/run_model_comparison.sh      # NN vs ML UMAP investigation
@@ -282,15 +306,24 @@ sbatch scripts/optional/run_model_comparison.sh      # NN vs ML UMAP investigati
 
 ## Paper Figures and Analysis
 
-The `figures/` directory contains scripts that generate all publication figures. Some scripts **compute embeddings** (PMTransformer forward pass or SOAP descriptors), others **plot UMAPs** from those embeddings, and some do both. You never need to manually label MOFs as labeled/unlabeled -- every script reads your existing split JSONs and determines this automatically.
+The `figures/` directory generates all publication figures. These scripts fit into the main pipeline at two points:
+
+- **F1-F5** can run after Step 5 (once all models are trained) to visualise the embedding spaces -- useful before committing to candidate nomination.
+- **F6-F7** require Step 7 outputs (nomination lists) and, for F7, completed DFT calculations on the nominated structures.
+
+Some scripts **compute embeddings** (PMTransformer forward pass or SOAP descriptors), others **plot UMAPs**, and some do both. Labeling (labeled vs. unlabeled) is determined automatically from your split JSONs -- no manual annotation needed.
+
+### `qmof.csv` (optional, for metal center panels)
+
+Scripts F2 and F3 produce a metal-center UMAP panel (panel c) that colors each MOF by its central metal atom. This requires `qmof.csv` from the [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF) -- specifically the `name` and `info.formula` columns. Download it and place it at `data/qmof.csv` (the path set by `$QMOF_CSV` in `config.sh`). If the file is missing, the metal center panel will display "Unknown" for all MOFs. This file is too large to include in the repository.
 
 ### What each script does
 
 | Script | What it computes | GPU? |
 |--------|-----------------|------|
 | `forward_pretrained_embeddings.py` | Runs **pretrained PMTransformer** on ALL MOFs → 768-dim embeddings NPZ | GPU |
-| `umap_pretrained.py` | Takes embeddings from F1 → 4-panel UMAP (labeled/unlabeled, bandgap, metal, splits) | CPU |
-| `forward_finetuned_umap.py` | Runs **fine-tuned PMTransformer** on ALL MOFs → embeddings + 4-panel UMAP | GPU |
+| `umap_pretrained.py` | Takes embeddings from F1 → 4-panel UMAP (labeled/unlabeled, bandgap, metal center, splits) | CPU |
+| `forward_finetuned_umap.py` | Runs **fine-tuned PMTransformer** on ALL MOFs → embeddings + 4-panel UMAP (incl. metal center) | GPU |
 | `soap_descriptors_umap.py` | Computes **SOAP descriptors from CIF files** → 4-panel UMAP (NN-independent) | CPU |
 | `soap_validation.py` | SOAP structural validation: coverage, structure-bandgap correlation, Mantel test | CPU |
 | `umap_ensemble_nominations.py` | Overlays the 25 nominated structures on fine-tuned UMAPs | CPU |
@@ -299,14 +332,14 @@ The `figures/` directory contains scripts that generate all publication figures.
 ### Dependency diagram
 
 ```
-F1 (pretrained forward pass)  ──→ F2 (pretrained UMAP)
+F1 (pretrained forward pass)  ──→ F2 (pretrained UMAP, +metal center panel if qmof.csv)
                                ──→ F5 (SOAP validation, needs F1 + CIF)
                                ──→ F7 (DFT nomination UMAP, needs F1 + bandgap_results.csv)
 
 F3 (finetuned forward pass)   ──→ F6 (ensemble nominations on finetuned UMAPs)
                                ──→ F7 (optional finetuned overlay)
 
-F4 (SOAP from CIF)             [independent — only needs CIF files]
+F4 (SOAP from CIF)             [independent — only needs CIF files and split JSONs]
 ```
 
 ### Running the figure pipeline

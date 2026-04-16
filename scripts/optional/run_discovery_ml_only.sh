@@ -36,7 +36,7 @@ python data_preparation/extract_unlabeled_embeddings.py \
     --data_dir "$DISCOVERY_DATA" \
     --output_dir "$DISCOVERY_DATA/embedding_analysis"
 
-DISCOVERY_NPZ="$DISCOVERY_DATA/embedding_analysis/Phase6_embeddings.npz"
+DISCOVERY_NPZ="$DISCOVERY_DATA/embedding_analysis/unlabeled_embeddings.npz"
 echo "  Output: $DISCOVERY_NPZ"
 
 section "ML INFERENCE ON UNLABELED DATA"
@@ -53,7 +53,7 @@ NN_CSV="$DISCOVERY_DATA/inference_results/inference_predictions.csv"
 if [ -f "$NN_CSV" ]; then
     section "RUNNING ML + NN DISCOVERY (NN predictions found)"
     python discovery/discovery_pipeline.py \
-        --phase6_dir "$DISCOVERY_DATA" \
+        --discovery_dir "$DISCOVERY_DATA" \
         --embeddings_path "$DISCOVERY_NPZ" \
         --ml_models_dir "$SKLEARN_DIR" \
         --output_dir "$DISCOVERY_DATA/discovery_output" \
@@ -62,7 +62,7 @@ if [ -f "$NN_CSV" ]; then
 else
     section "RUNNING ML-ONLY DISCOVERY (no NN predictions yet)"
     python discovery/discovery_pipeline.py \
-        --phase6_dir "$DISCOVERY_DATA" \
+        --discovery_dir "$DISCOVERY_DATA" \
         --embeddings_path "$DISCOVERY_NPZ" \
         --ml_models_dir "$SKLEARN_DIR" \
         --output_dir "$DISCOVERY_DATA/discovery_output" \

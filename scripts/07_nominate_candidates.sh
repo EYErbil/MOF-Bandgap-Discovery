@@ -54,7 +54,7 @@ NN_CSV="$EXP_BASE/$NN_EXP/inference_predictions.csv"
 ML_CSV="$SKLEARN_DIR/$ML_METHOD/test_predictions.csv"
 
 # Embeddings for diversity computation
-PMT_EMBEDDINGS="$DISCOVERY_DATA/embedding_analysis/Phase6_embeddings.npz"
+PMT_EMBEDDINGS="$DISCOVERY_DATA/embedding_analysis/unlabeled_embeddings.npz"
 SOAP_EMBEDDINGS=""  # Set to path of soap_descriptors.npz if available
 
 # Optional: path to a previous nomination for comparison

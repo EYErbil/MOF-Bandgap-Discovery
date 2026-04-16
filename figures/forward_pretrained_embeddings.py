@@ -19,13 +19,13 @@ Output
       splits      – np.array of str ('train','val','test' for labeled; 'unlabeled')
       is_labeled  – np.array of bool
 
-Usage  (cluster)
-----------------
-  python extract_all_embeddings_unified.py \\
-      --data_dir /scratch/users/eerbil20/KUIS-AI-MOF/Phase2_Inferences-Kasim_2025/Cross-Validation-Training-QMOF/Train_ready_directory/test \\
-      --labeled_splits_dir /scratch/users/eerbil20/KUIS-AI-MOF/Phase5_ChemicalAnalysis_subset/new_splits/strategy_d_farthest_point \\
-      --unlabeled_json /scratch/users/eerbil20/KUIS-AI-MOF/Phase6_QMOFinference/Processed-data/test_bandgaps_regression.json \\
-      --output_dir ./single_forward_embedding_total
+Usage
+-----
+  python figures/forward_pretrained_embeddings.py \\
+      --data_dir data/raw/test \\
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --unlabeled_json data/unlabeled/test_bandgaps_regression.json \\
+      --output_dir figures_output/pretrained_embeddings
 
 Requirements
 ------------

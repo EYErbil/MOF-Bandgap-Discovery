@@ -11,25 +11,25 @@ Two panels:
   (a) Overview — all MOFs in gray/blue, nominations as colored stars (by bandgap)
   (b) Zoom on nominations — annotated with MOF name + bandgap value
 
-Usage (cluster):
+Usage:
   # Pretrained (foundational) model embeddings:
-  python figure_nominated_bandgap_umap.py \
-      --pretrained_npz /scratch/users/eerbil20/KUIS-AI-MOF/Writingpaper/single_forward_embedding_total/all_embeddings.npz \
-      --bandgap_csv /scratch/users/eerbil20/KUIS-AI-MOF/Phase7-Discover-DFT/25-Nominated/bandgap_results.csv \
-      --labeled_splits_dir /path/to/new_splits/strategy_d_farthest_point \
-      --output_dir ./nominated_umap_figures
+  python figures/umap_dft_nominations.py \
+      --pretrained_npz figures_output/pretrained_embeddings/all_embeddings.npz \
+      --bandgap_csv data/unlabeled/nomination-SOAP/bandgap_results.csv \
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \
+      --output_dir figures_output/dft_nominations
 
   # Also overlay a fine-tuned model for comparison:
-  python figure_nominated_bandgap_umap.py \
-      --pretrained_npz /path/to/single_forward_embedding_total/all_embeddings.npz \
-      --finetuned_npz /path/to/posttrain_umap_figures_exp370/posttrain_embeddings.npz \
+  python figures/umap_dft_nominations.py \
+      --pretrained_npz figures_output/pretrained_embeddings/all_embeddings.npz \
+      --finetuned_npz figures_output/finetuned_umap/posttrain_embeddings.npz \
       --finetuned_name exp370 \
-      --bandgap_csv /path/to/bandgap_results.csv \
-      --labeled_splits_dir /path/to/new_splits/strategy_d_farthest_point \
-      --output_dir ./nominated_umap_figures
+      --bandgap_csv data/unlabeled/nomination-SOAP/bandgap_results.csv \
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \
+      --output_dir figures_output/dft_nominations
 
   # With UMAP cache for fast re-runs:
-  python figure_nominated_bandgap_umap.py \
+  python umap_dft_nominations.py \
       --pretrained_npz /path/to/all_embeddings.npz \
       --bandgap_csv /path/to/bandgap_results.csv \
       --labeled_splits_dir /path/to/new_splits/strategy_d_farthest_point \

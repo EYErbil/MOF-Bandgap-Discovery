@@ -26,16 +26,16 @@ Pipeline
 
 Usage  (cluster)
 ----------------
-  python figure_soap_analysis.py \\
-      --cif_dir /scratch/.../Train_ready_directory/test \\
-      --merged_embeddings ./single_forward_embedding_total/all_embeddings.npz \\
-      --labeled_splits_dir /scratch/.../new_splits/strategy_d_farthest_point \\
-      --output_dir ./soap_analysis
+  python figures/soap_validation.py \\
+      --cif_dir data/raw/cif \\
+      --merged_embeddings figures_output/pretrained_embeddings/all_embeddings.npz \\
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --output_dir figures_output/soap_validation
 
   # With ensemble predictions for applicability domain:
-  python figure_soap_analysis.py \\
+  python soap_validation.py \\
       --cif_dir ... --merged_embeddings ... --labeled_splits_dir ... \\
-      --phase6_top_predictions /path/to/top25_for_DFT_rrf.txt \\
+      --nominations /path/to/top25_for_DFT_rrf.txt \\
       --output_dir ./soap_analysis
 
 Requirements
@@ -272,7 +272,7 @@ def load_split_labels(splits_dir):
     return labels, assignments
 
 
-def load_phase6_top_predictions(filepath):
+def load_nominations(filepath):
     """Load a top-K prediction file (one CIF ID per line)."""
     cids = []
     with open(filepath) as fh:
@@ -700,7 +700,7 @@ def _add_binned_mean(ax, x, y, n_bins=8, color="red"):
 def analysis_c_applicability_domain(soap_cids, soap_matrix,
                                     nn_cids, nn_embs,
                                     labeled_bg, labeled_splits,
-                                    phase6_cids, threshold, output_dir):
+                                    nomination_cids, threshold, output_dir):
     """For each ensemble top-K prediction, evaluate structural novelty
     relative to training data using SOAP.
 
@@ -722,51 +722,51 @@ def analysis_c_applicability_domain(soap_cids, soap_matrix,
     # Filter to those present in SOAP
     train_soap_cids     = [c for c in train_cids if c in soap_idx]
     train_pos_soap_cids = [c for c in train_pos_cids if c in soap_idx]
-    phase6_soap_cids    = [c for c in phase6_cids if c in soap_idx]
+    nomination_soap_cids = [c for c in nomination_cids if c in soap_idx]
 
     print(f"    Train MOFs in SOAP: {len(train_soap_cids)}  "
           f"(positives: {len(train_pos_soap_cids)})")
-    print(f"    Ensemble candidates in SOAP: {len(phase6_soap_cids)} / "
-          f"{len(phase6_cids)}")
+    print(f"    Ensemble candidates in SOAP: {len(nomination_soap_cids)} / "
+          f"{len(nomination_cids)}")
 
-    if not phase6_soap_cids or not train_soap_cids:
+    if not nomination_soap_cids or not train_soap_cids:
         print("    WARNING: Insufficient data — skipping")
         return None
 
-    phase6_soap = soap_matrix[[soap_idx[c] for c in phase6_soap_cids]]
+    nomination_soap = soap_matrix[[soap_idx[c] for c in nomination_soap_cids]]
     train_soap  = soap_matrix[[soap_idx[c] for c in train_soap_cids]]
 
     # Similarity to all training data
-    sim_to_train = soap_similarity_matrix(phase6_soap, train_soap)
+    sim_to_train = soap_similarity_matrix(nomination_soap, train_soap)
     max_sim_any  = sim_to_train.max(axis=1)
     nn_any_cids  = [train_soap_cids[int(j)] for j in sim_to_train.argmax(axis=1)]
 
     # Similarity to training positives
     if train_pos_soap_cids:
         train_pos_soap = soap_matrix[[soap_idx[c] for c in train_pos_soap_cids]]
-        sim_to_pos = soap_similarity_matrix(phase6_soap, train_pos_soap)
+        sim_to_pos = soap_similarity_matrix(nomination_soap, train_pos_soap)
         max_sim_pos = sim_to_pos.max(axis=1)
         nn_pos_cids = [train_pos_soap_cids[int(j)]
                        for j in sim_to_pos.argmax(axis=1)]
     else:
-        max_sim_pos = np.zeros(len(phase6_soap_cids))
-        nn_pos_cids = ["N/A"] * len(phase6_soap_cids)
+        max_sim_pos = np.zeros(len(nomination_soap_cids))
+        nn_pos_cids = ["N/A"] * len(nomination_soap_cids)
 
     # Also compute NN-based similarity for comparison
-    phase6_nn_cids = [c for c in phase6_soap_cids if c in nn_idx]
+    nomination_nn_cids = [c for c in nomination_soap_cids if c in nn_idx]
     nn_sim_any = {}
-    if phase6_nn_cids:
+    if nomination_nn_cids:
         train_nn_cids = [c for c in train_cids if c in nn_idx]
         if train_nn_cids:
-            p6_nn  = nn_embs[[nn_idx[c] for c in phase6_nn_cids]]
+            nom_nn = nn_embs[[nn_idx[c] for c in nomination_nn_cids]]
             tr_nn  = nn_embs[[nn_idx[c] for c in train_nn_cids]]
-            s_nn   = cosine_similarity_matrix(p6_nn, tr_nn)
-            for i, c in enumerate(phase6_nn_cids):
+            s_nn   = cosine_similarity_matrix(nom_nn, tr_nn)
+            for i, c in enumerate(nomination_nn_cids):
                 nn_sim_any[c] = float(s_nn[i].max())
 
     # Build results table
     results = []
-    for i, cid in enumerate(phase6_soap_cids):
+    for i, cid in enumerate(nomination_soap_cids):
         s_any = float(max_sim_any[i])
         s_pos = float(max_sim_pos[i])
         s_nn  = nn_sim_any.get(cid, np.nan)
@@ -780,7 +780,7 @@ def analysis_c_applicability_domain(soap_cids, soap_matrix,
             conf = "low"
 
         results.append({
-            "rank": phase6_cids.index(cid) + 1 if cid in phase6_cids else -1,
+            "rank": nomination_cids.index(cid) + 1 if cid in nomination_cids else -1,
             "cif_id": cid,
             "soap_sim_nearest_train": round(s_any, 4),
             "soap_nearest_train_cid": nn_any_cids[i],
@@ -986,10 +986,10 @@ def main():
     pa.add_argument("--cif_dir", required=True,
                     help="Directory with .cif files for all MOFs")
     pa.add_argument("--merged_embeddings", required=True,
-                    help="Unified NPZ from extract_all_embeddings_unified.py")
+                    help="Unified NPZ from forward_pretrained_embeddings.py")
     pa.add_argument("--labeled_splits_dir", required=True,
                     help="Dir with {train,val,test}_bandgaps_regression.json")
-    pa.add_argument("--phase6_top_predictions", default=None,
+    pa.add_argument("--nominations", default=None,
                     help="File with top-K ensemble CIF IDs (one per line) "
                          "for applicability domain analysis")
     pa.add_argument("--output_dir", default="./soap_analysis")
@@ -1072,16 +1072,16 @@ def main():
 
     # Analysis C: Applicability Domain
     if "c" not in args.skip_analyses:
-        if args.phase6_top_predictions and os.path.exists(
-                args.phase6_top_predictions):
-            phase6_cids = load_phase6_top_predictions(
-                args.phase6_top_predictions)
+        if args.nominations and os.path.exists(
+                args.nominations):
+            nomination_cids = load_nominations(
+                args.nominations)
             all_results["c"] = analysis_c_applicability_domain(
                 soap_cids, soap_matrix, nn_cids, nn_embs,
                 labeled_bg, labeled_splits,
-                phase6_cids, args.threshold, args.output_dir)
+                nomination_cids, args.threshold, args.output_dir)
         else:
-            print("\n  ── Analysis C: Skipped (no --phase6_top_predictions) ──")
+            print("\n  ── Analysis C: Skipped (no --nominations) ──")
 
     # Analysis D: Mantel Test
     if "d" not in args.skip_analyses:

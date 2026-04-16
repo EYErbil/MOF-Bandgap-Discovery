@@ -24,24 +24,24 @@ Two modes:
 
 Usage (cluster):
   # Extract + plot in one go:
-  python figure_posttrain_umap.py \\
+  python forward_finetuned_umap.py \\
       --extract --plot \\
       --checkpoint /path/to/best_es-spearman=0.xxx.ckpt \\
-      --data_dir /scratch/.../Train_ready_directory/test \\
-      --labeled_splits_dir /scratch/.../new_splits/strategy_d_farthest_point \\
-      --unlabeled_json /scratch/.../Phase6_QMOFinference/Processed-data/test_bandgaps_regression.json \\
-      --qmof_csv /scratch/.../qmof.csv \\
-      --output_dir ./posttrain_umap_figures
+      --data_dir data/raw/test \\
+      --labeled_splits_dir data/splits/strategy_d_farthest_point \\
+      --unlabeled_json data/unlabeled/test_bandgaps_regression.json \\
+      --qmof_csv data/qmof.csv \\
+      --output_dir figures_output/finetuned_umap
 
   # Or from experiment name (auto-finds best checkpoint):
-  python figure_posttrain_umap.py \\
+  python forward_finetuned_umap.py \\
       --extract --plot \\
       --experiment exp364_embsplit_d_fulltune \\
       --data_dir ... --labeled_splits_dir ... --unlabeled_json ... \\
       --qmof_csv ... --output_dir ./posttrain_umap_figures
 
   # Plot-only from existing NPZ (fast re-runs to tweak visuals):
-  python figure_posttrain_umap.py \\
+  python forward_finetuned_umap.py \\
       --plot \\
       --embeddings_npz ./posttrain_umap_figures/posttrain_embeddings.npz \\
       --labeled_splits_dir ... --qmof_csv ... \\
@@ -728,7 +728,7 @@ def main():
     g1.add_argument("--data_dir", default=None,
                     help="Dir with .graphdata/.griddata16/.grid for ALL MOFs")
     g1.add_argument("--unlabeled_json", default=None,
-                    help="Phase6 test_bandgaps_regression.json")
+                    help="Unlabeled test_bandgaps_regression.json")
     g1.add_argument("--device", default=None)
 
     # Plot args

@@ -33,7 +33,7 @@ section "F5: SOAP structural validation"
 
 EXTRA_ARGS=()
 if [ -n "$NOMINATIONS" ] && [ -f "$NOMINATIONS" ]; then
-    EXTRA_ARGS+=(--phase6_top_predictions "$NOMINATIONS")
+    EXTRA_ARGS+=(--nominations "$NOMINATIONS")
 fi
 
 python figures/soap_validation.py \

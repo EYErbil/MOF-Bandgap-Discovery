@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Phase5 verification: load all saved regular ML models, infer on the test set,
+ML verification: load all saved regular ML models, infer on the test set,
 reproduce rankings, and generate a heatmap + reproducibility report.
 
 Usage:
@@ -229,7 +229,7 @@ def run_verification(base_dir, embeddings_path, labels_dir, clf_dir, threshold, 
     report_path = os.path.join(output_dir, "verification_report.txt")
     os.makedirs(output_dir, exist_ok=True)
     with open(report_path, "w") as f:
-        f.write("Phase5 ML verification report\n")
+        f.write("ML verification report\n")
         f.write("=" * 60 + "\n\n")
         f.write(f"Base dir:        {base_dir}\n")
         f.write(f"Embeddings:      {embeddings_path}\n")
@@ -256,9 +256,9 @@ def run_verification(base_dir, embeddings_path, labels_dir, clf_dir, threshold, 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Phase5: verify ML models and generate ranking heatmap")
+    parser = argparse.ArgumentParser(description="Verify ML models and generate ranking heatmap")
     parser.add_argument("--base_dir", type=str, default=".",
-                        help="Phase5 base (embedding_classifiers, embedding_analysis, new_splits)")
+                        help="Base dir (embedding_classifiers, embedding_analysis, splits)")
     parser.add_argument("--embeddings_path", type=str, default=None,
                         help="Path to .npz (default: base_dir/embedding_analysis/embeddings_pretrained.npz)")
     parser.add_argument("--labels_dir", type=str, default=None,

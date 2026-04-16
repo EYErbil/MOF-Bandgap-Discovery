@@ -63,7 +63,7 @@ python data_preparation/extract_unlabeled_embeddings.py \
     --data_dir "$DISCOVERY_DATA" \
     --output_dir "$DISCOVERY_DATA/embedding_analysis"
 
-DISCOVERY_NPZ="$DISCOVERY_DATA/embedding_analysis/Phase6_embeddings.npz"
+DISCOVERY_NPZ="$DISCOVERY_DATA/embedding_analysis/unlabeled_embeddings.npz"
 echo "  Output: $DISCOVERY_NPZ"
 
 # =============================================================================

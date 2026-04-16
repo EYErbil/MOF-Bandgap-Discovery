@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Phase6 discovery: run saved ML + optional NN on a new test set (no ground truth),
+Discovery pipeline: run saved ML + optional NN on a new test set (no ground truth),
 output top-25/50/100 per individual model and per ensemble, plus agreement report.
 
-Assumes Phase6 embeddings .npz is available (you do mapping). Creates:
+Assumes unlabeled embeddings .npz is available (you do mapping). Creates:
   individual/<model>/top25.txt, top50.txt, top100.txt
   ensemble/rrf/top25.txt, ...
   ensemble/rank_avg/top25.txt, ...
   discovery_agreement_report.txt
 
 Usage:
-  python Phase6_QMOFinference/phase6_discovery.py \\
-    --phase6_dir /path/to/Phase6_QMOFinference \\
-    --embeddings_path Processed-data/Phase6_embeddings.npz \\
+  python discovery/discovery_pipeline.py \\
+    --discovery_dir /path/to/discovery \\
+    --embeddings_path Processed-data/unlabeled_embeddings.npz \\
     [--ml_models_dir ...] [--nn_predictions ...] [--output_dir ...]
 """
 
@@ -25,13 +25,13 @@ from collections import defaultdict
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-# Include src/ for predict_with_embedding_classifier; include SCRIPT_DIR for ensemble_phase6_predictions
+# Include src/ for predict_with_embedding_classifier; include SCRIPT_DIR for ensemble_predictions
 for d in (SCRIPT_DIR, PROJECT_ROOT, os.path.join(PROJECT_ROOT, "src")):
     if d not in sys.path:
         sys.path.insert(0, d)
 
 from predict_with_embedding_classifier import load_embeddings, load_model_artifacts, predict_scores
-import ensemble_phase6_predictions as ep6
+import ensemble_predictions as ep6
 
 TOP_K_LIST = [25, 50, 100]
 
@@ -163,7 +163,7 @@ def write_agreement_report(output_dir, trials_by_k):
     path = os.path.join(output_dir, "discovery_agreement_report.txt")
     n_trials = {k: len(trials_by_k[k]) for k in TOP_K_LIST}
     with open(path, "w", encoding="utf-8") as f:
-        f.write("Phase6 discovery agreement report\n")
+        f.write("Discovery agreement report\n")
         f.write("=" * 60 + "\n\n")
         f.write("Structures that appear in all trials (or in >=80%, >=50%) for each top-K.\n\n")
         for k in TOP_K_LIST:
@@ -199,24 +199,24 @@ def write_agreement_report(output_dir, trials_by_k):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Phase6 discovery: ML + NN → top-25/50/100 and agreement report")
-    parser.add_argument("--phase6_dir", type=str, default=None,
-                        help="Phase6 root (default: dir of this script)")
+    parser = argparse.ArgumentParser(description="Discovery pipeline: ML + NN → top-25/50/100 and agreement report")
+    parser.add_argument("--discovery_dir", type=str, default=None,
+                        help="Discovery root (default: dir of this script)")
     parser.add_argument("--embeddings_path", type=str, required=True,
-                        help="Path to Phase6 embeddings .npz")
+                        help="Path to unlabeled embeddings .npz")
     parser.add_argument("--ml_models_dir", type=str, default=None,
-                        help="Path to embedding_classifiers/strategy_d_farthest_point (default: phase6_dir/../embedding_classifiers/strategy_d_farthest_point or phase6_dir/embedding_classifiers/strategy_d_farthest_point)")
+                        help="Path to embedding_classifiers/strategy_d_farthest_point (default: discovery_dir/../embedding_classifiers/strategy_d_farthest_point or discovery_dir/embedding_classifiers/strategy_d_farthest_point)")
     parser.add_argument("--nn_predictions", type=str, default=None,
                         help="Path to inference_predictions.csv (optional)")
     parser.add_argument("--output_dir", type=str, default=None,
-                        help="Output directory (default: phase6_dir/Processed-data/discovery_output)")
+                        help="Output directory (default: discovery_dir/Processed-data/discovery_output)")
     parser.add_argument("--rrf_k", type=int, default=60, help="RRF k parameter")
     args = parser.parse_args()
 
-    phase6_dir = os.path.abspath(args.phase6_dir or SCRIPT_DIR)
+    discovery_dir = os.path.abspath(args.discovery_dir or SCRIPT_DIR)
     emb_path = args.embeddings_path
     if not os.path.isabs(emb_path):
-        emb_path = os.path.join(phase6_dir, emb_path)
+        emb_path = os.path.join(discovery_dir, emb_path)
     if not os.path.isfile(emb_path):
         print(f"ERROR: Embeddings not found: {emb_path}")
         return 1
@@ -224,29 +224,29 @@ def main():
     ml_dir = args.ml_models_dir
     if ml_dir is None:
         for candidate in [
-            os.path.join(phase6_dir, "embedding_classifiers", "strategy_d_farthest_point"),
+            os.path.join(discovery_dir, "embedding_classifiers", "strategy_d_farthest_point"),
             os.path.join(PROJECT_ROOT, "embedding_classifiers", "strategy_d_farthest_point"),
         ]:
             if os.path.isdir(candidate):
                 ml_dir = candidate
                 break
         if ml_dir is None:
-            ml_dir = os.path.join(phase6_dir, "embedding_classifiers", "strategy_d_farthest_point")
+            ml_dir = os.path.join(discovery_dir, "embedding_classifiers", "strategy_d_farthest_point")
     ml_dir = os.path.abspath(ml_dir)
 
     output_dir = args.output_dir
     if output_dir is None:
-        output_dir = os.path.join(phase6_dir, "Processed-data", "discovery_output")
+        output_dir = os.path.join(discovery_dir, "Processed-data", "discovery_output")
     output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
     nn_path = args.nn_predictions
     if nn_path and not os.path.isabs(nn_path):
-        nn_path = os.path.join(phase6_dir, nn_path)
+        nn_path = os.path.join(discovery_dir, nn_path)
 
     cif_ids, _, _ = load_embeddings(emb_path)
     all_cids = set(cif_ids)
-    print(f"Phase6 discovery: {len(all_cids)} structures")
+    print(f"Discovery: {len(all_cids)} structures")
     print(f"  Embeddings: {emb_path}")
     print(f"  ML models:  {ml_dir}")
     print(f"  Output:     {output_dir}")

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Phase6 ensemble: RRF + rank_avg on NN + ML + kNN predictions → top 25 for DFT.
+Discovery ensemble: RRF + rank_avg on NN + ML + kNN predictions → top 25 for DFT.
 
 Loads test_predictions.csv (or inference_predictions.csv) from each prediction dir,
 applies Reciprocal Rank Fusion and rank averaging, outputs top 25.
 
-No true-label evaluation (Phase6 has no labels).
+No true-label evaluation (unlabeled set — no labels).
 
 Usage:
-  python Phase6_QMOFinference/ensemble_phase6_predictions.py \\
-    --prediction_dirs Phase6_ml/extra_trees Phase6_ml/random_forest Phase6_knn \\
-    --nn_predictions Phase6_QMOFinference/Processed-data/inference_results/inference_predictions.csv \\
-    --output_dir Phase6_QMOFinference/Processed-data/inference_results \\
+  python discovery/ensemble_predictions.py \\
+    --prediction_dirs ml_results/extra_trees ml_results/random_forest knn_results \\
+    --nn_predictions discovery/Processed-data/inference_results/inference_predictions.csv \\
+    --output_dir discovery/Processed-data/inference_results \\
     --top_k 25
 """
 
@@ -197,7 +197,7 @@ def type_balanced_rrf(models, test_cids, model_types, k=60):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Phase6 ensemble: RRF + rank_avg → top 25 for DFT"
+        description="Discovery ensemble: RRF + rank_avg → top 25 for DFT"
     )
     parser.add_argument(
         "--prediction_dirs",
@@ -268,7 +268,7 @@ def main():
     test_cids = sorted(all_cids)
     top_k_list = sorted(set(args.top_k))
     print("=" * 70)
-    print(f"  Phase6 ensemble: RRF + rank_avg → top {top_k_list} for DFT")
+    print(f"  Discovery ensemble: RRF + rank_avg → top {top_k_list} for DFT")
     print("=" * 70)
     print(f"  Models: {list(models.keys())}")
     print(f"  Test CIFs: {len(test_cids)}")
