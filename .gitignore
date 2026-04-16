@@ -28,6 +28,8 @@ logs/
 slurm-*.out
 *.png
 *.pdf
+*.svg
+figures_output/
 
 # --- OS / IDE ----------------------------------------------------------------
 .DS_Store

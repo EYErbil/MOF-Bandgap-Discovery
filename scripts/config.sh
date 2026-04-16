@@ -32,6 +32,9 @@ export KNN_DIR="$DATA_DIR/knn_results/strategy_d_farthest_point"
 export ENSEMBLE_DIR="$DATA_DIR/ensemble_results"
 export REPORT_DIR="$DATA_DIR/final_results"
 export DISCOVERY_DATA="$DATA_DIR/unlabeled"
+export CIF_DIR="$DATA_DIR/raw/cif"                         # All CIF files (labeled + unlabeled)
+export QMOF_CSV="$DATA_DIR/qmof.csv"                       # QMOF metadata (formula, metal centers)
+export FIGURES_OUTPUT="$BASE_DIR/figures_output"             # Generated figure outputs
 
 # --- Helper function ---------------------------------------------------------
 load_modules() {

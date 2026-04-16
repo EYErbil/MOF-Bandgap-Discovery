@@ -78,6 +78,15 @@ MOF-Bandgap-Discovery/
 │   ├── plot_model_comparison.py
 │   └── nominate_diverse_dft.py #   Step 7: diversity-aware DFT nomination
 │
+├── figures/                    # Paper figure generation scripts
+│   ├── forward_pretrained_embeddings.py   # F1: pretrained PMTransformer → embeddings
+│   ├── umap_pretrained.py                 # F2: UMAP of pretrained embeddings
+│   ├── forward_finetuned_umap.py          # F3: fine-tuned forward pass + UMAP
+│   ├── soap_descriptors_umap.py           # F4: SOAP from CIF files + UMAP
+│   ├── soap_validation.py                 # F5: SOAP structural validation
+│   ├── umap_ensemble_nominations.py       # F6: ensemble nominations on UMAP
+│   └── umap_dft_nominations.py            # F7: nominated structures + DFT bandgap
+│
 ├── scripts/                    # SLURM pipeline orchestration
 │   ├── config.sh               #   Centralised cluster configuration
 │   ├── 01_extract_embeddings.sh
@@ -87,6 +96,7 @@ MOF-Bandgap-Discovery/
 │   ├── 05_generate_report.sh
 │   ├── 06_run_discovery.sh
 │   ├── 07_nominate_candidates.sh
+│   ├── figures/                #   SLURM wrappers for figure generation (F1-F7)
 │   └── optional/               #   UMAP, verify ML, reinfer, screening, etc.
 │
 ├── tools/                      # Split modification utilities
@@ -267,6 +277,55 @@ sbatch scripts/optional/run_discovery_ml_only.sh     # ML-only inference (CPU, n
 sbatch scripts/optional/run_discovery_nn_only.sh     # NN-only inference (GPU)
 sbatch scripts/optional/run_model_comparison.sh      # NN vs ML UMAP investigation
 ```
+
+---
+
+## Paper Figures and Analysis
+
+The `figures/` directory contains scripts that generate all publication figures. Some scripts **compute embeddings** (PMTransformer forward pass or SOAP descriptors), others **plot UMAPs** from those embeddings, and some do both. You never need to manually label MOFs as labeled/unlabeled -- every script reads your existing split JSONs and determines this automatically.
+
+### What each script does
+
+| Script | What it computes | GPU? |
+|--------|-----------------|------|
+| `forward_pretrained_embeddings.py` | Runs **pretrained PMTransformer** on ALL MOFs → 768-dim embeddings NPZ | GPU |
+| `umap_pretrained.py` | Takes embeddings from F1 → 4-panel UMAP (labeled/unlabeled, bandgap, metal, splits) | CPU |
+| `forward_finetuned_umap.py` | Runs **fine-tuned PMTransformer** on ALL MOFs → embeddings + 4-panel UMAP | GPU |
+| `soap_descriptors_umap.py` | Computes **SOAP descriptors from CIF files** → 4-panel UMAP (NN-independent) | CPU |
+| `soap_validation.py` | SOAP structural validation: coverage, structure-bandgap correlation, Mantel test | CPU |
+| `umap_ensemble_nominations.py` | Overlays the 25 nominated structures on fine-tuned UMAPs | CPU |
+| `umap_dft_nominations.py` | Shows the 25 nominated structures colored by their DFT bandgap | CPU |
+
+### Dependency diagram
+
+```
+F1 (pretrained forward pass)  ──→ F2 (pretrained UMAP)
+                               ──→ F5 (SOAP validation, needs F1 + CIF)
+                               ──→ F7 (DFT nomination UMAP, needs F1 + bandgap_results.csv)
+
+F3 (finetuned forward pass)   ──→ F6 (ensemble nominations on finetuned UMAPs)
+                               ──→ F7 (optional finetuned overlay)
+
+F4 (SOAP from CIF)             [independent — only needs CIF files]
+```
+
+### Running the figure pipeline
+
+| Step | Command | Time |
+|------|---------|------|
+| **F1** | `sbatch scripts/figures/01_forward_pretrained_embeddings.sh` | GPU, ~2-4h |
+| **F2** | `sbatch scripts/figures/02_umap_pretrained.sh` | CPU, ~30min |
+| **F3** | `sbatch scripts/figures/03_forward_finetuned_umap.sh` | GPU, ~6-8h |
+| **F4** | `sbatch scripts/figures/04_soap_descriptors_umap.sh` | CPU, ~2-4h |
+| **F5** | `sbatch scripts/figures/05_soap_validation.sh` | CPU, ~1-2h |
+| **F6** | `sbatch scripts/figures/06_umap_ensemble_nominations.sh` | CPU, ~1h |
+| **F7** | `sbatch scripts/figures/07_umap_dft_nominations.sh` | CPU, ~30min |
+
+**Quick start:** Run F1 first (GPU), then F2 and F4 can run in parallel (CPU). F3 can also run in parallel with F1 if GPU resources allow. F5-F7 depend on earlier outputs as shown above.
+
+Each SLURM wrapper sources `scripts/config.sh` and uses `$CIF_DIR`, `$QMOF_CSV`, `$FIGURES_OUTPUT`, `$SPLITS_DIR`. Edit the wrapper scripts to configure experiment names, nomination file paths, and optional arguments (e.g., `--load_umap_cache` for fast re-runs after the first UMAP computation).
+
+All generated figures go to `figures_output/` (git-ignored). Each script also saves a JSON summary with statistics alongside the plots.
 
 ---
 
