@@ -21,7 +21,7 @@ data/
 │       ├── train/  → symlinks or copies of raw files
 │       ├── val/
 │       └── test/
-├── phase6/                       # Unlabeled MOFs for discovery inference
+├── unlabeled/                    # Unlabeled MOFs for discovery inference
 │   ├── <CIF_ID>.grid
 │   ├── <CIF_ID>.griddata16
 │   └── <CIF_ID>.graphdata

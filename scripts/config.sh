@@ -31,7 +31,7 @@ export SKLEARN_DIR="$DATA_DIR/embedding_classifiers/strategy_d_farthest_point"
 export KNN_DIR="$DATA_DIR/knn_results/strategy_d_farthest_point"
 export ENSEMBLE_DIR="$DATA_DIR/ensemble_results"
 export REPORT_DIR="$DATA_DIR/final_results"
-export PHASE6_DATA="$DATA_DIR/phase6"
+export DISCOVERY_DATA="$DATA_DIR/unlabeled"
 
 # --- Helper function ---------------------------------------------------------
 load_modules() {

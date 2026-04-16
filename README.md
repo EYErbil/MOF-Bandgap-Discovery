@@ -1,87 +1,45 @@
 # MOF-Bandgap-Discovery
 
-**Discovering low-bandgap Metal-Organic Frameworks through multi-model ensemble learning on MOFTransformer embeddings.**
+**Discovering low-bandgap Metal-Organic Frameworks through diversity-aware ensemble learning on PMTransformer embeddings.**
 
-This repository implements a complete, reproducible pipeline for screening Metal-Organic Frameworks (MOFs) with potentially conductive bandgaps (< 1.0 eV). It combines deep learning (MOFTransformer fine-tuning) with classical ML classifiers trained on pretrained embeddings, all fused via Reciprocal Rank Fusion (RRF) ensembles.
-
-> **For newcomers:** A MOF (Metal-Organic Framework) is a porous crystalline material made of metal nodes connected by organic linkers. The *bandgap* measures how easily electrons can flow — a low bandgap (< 1.0 eV) suggests the material may conduct electricity, which is valuable for electronics, sensors, and catalysis. This pipeline finds those rare low-bandgap MOFs among thousands of candidates.
+This repository implements a reproducible pipeline for screening Metal-Organic Frameworks (MOFs) with potentially conductive bandgaps (< 1.0 eV). It combines a fine-tuned PMTransformer (the [MOFTransformer](https://github.com/hspark1212/MOFTransformer) architecture) with classical ML classifiers trained on pretrained embeddings, fused via Reciprocal Rank Fusion (RRF). Final DFT candidates are selected using a diversity-aware nomination strategy that leverages SOAP descriptors to maximize structural spread across the shortlist.
 
 ---
 
-## Table of Contents
+## Key Contribution
 
-1. [Pipeline Overview](#pipeline-overview)
-2. [Repository Structure](#repository-structure)
-3. [Dataset Statistics](#dataset-statistics)
-4. [Prerequisites](#prerequisites)
-5. [Installation](#installation)
-6. [Quick Start (6 Commands)](#quick-start-6-commands)
-7. [Detailed Walkthrough](#detailed-walkthrough)
-   - [Step 1: Extract Embeddings & Create Splits](#step-1-extract-embeddings--create-splits)
-   - [Step 2: Train Neural Network Regressors](#step-2-train-neural-network-regressors)
-   - [Step 3: Train ML Classifiers & kNN Baselines](#step-3-train-ml-classifiers--knn-baselines)
-   - [Step 4: Exhaustive Ensemble Ablation](#step-4-exhaustive-ensemble-ablation)
-   - [Step 5: Generate Report](#step-5-generate-report)
-   - [Step 6: Discovery on New MOFs](#step-6-discovery-on-new-mofs-optional)
-   - [Step 7: DFT Candidate Nomination](#step-7-dft-candidate-nomination-multi-perspective-consensus)
-8. [Customizing Experiments (Creating Your Own)](#customizing-experiments)
-9. [Custom Ensembles (Choosing Your Own Model Combinations)](#custom-ensembles)
-10. [Split Modification Workflow](#split-modification-workflow)
-11. [Optional Analysis Scripts](#optional-analysis-scripts)
-12. [Key Design Decisions](#key-design-decisions)
-13. [Output Artifacts](#output-artifacts)
-14. [Troubleshooting](#troubleshooting)
-15. [Citation](#citation)
-16. [License](#license)
+The pipeline extracts two complementary prediction signals from a single foundation model:
+
+1. **Embedding-based ML classifiers** -- Fixed 768-dim representations from the pretrained (non-fine-tuned) PMTransformer encoder are used to train lightweight tree classifiers (Extra Trees, Random Forest with SMOTE). This leverages the general structural knowledge learned during pretraining on ~660K MOFs, without modifying the encoder.
+
+2. **Fine-tuned PMTransformer** -- The full model is fine-tuned end-to-end for bandgap regression, adapting both encoder and prediction head to the target property.
+
+These two approaches capture complementary signal: the trees operate on frozen general-purpose features while the fine-tuned model has task-adapted features. Their predictions are fused via RRF, and NN-ML disagreement provides an uncertainty signal.
+
+**Diversity-aware candidate nomination (Step 7):** Rather than selecting the top-K candidates by score alone, the nomination pipeline clusters the RRF shortlist in embedding space and applies multiple diversity-aware strategies (cluster-quota round-robin, Maximal Marginal Relevance, uncertainty-weighted selection). When SOAP descriptors are used as the diversity space instead of PMTransformer embeddings, the resulting nominees achieve greater structural spread -- SOAP measures purely geometric/chemical similarity independent of the learned representations used for scoring.
 
 ---
 
 ## Pipeline Overview
 
 ```
- ┌───────────────────────────────────────────────────────────────────────────┐
- │                     MOF-Bandgap-Discovery Pipeline                       │
- ├───────────────────────────────────────────────────────────────────────────┤
- │                                                                           │
- │  STEP 1  Extract pretrained 768-dim CLS embeddings (MOFTransformer)      │
- │     │    Create Strategy D farthest-point train/val/test splits           │
- │     ▼                                                                     │
- │  STEP 2  Fine-tune MOFTransformer for bandgap regression                 │
- │     │    (3 seed variants: exp364, exp370, exp371)                        │
- │     ▼                                                                     │
- │  STEP 3  Train 15+ sklearn classifiers + kNN baselines                   │
- │     │    on pretrained embeddings (no GPU needed)                         │
- │     ▼                                                                     │
- │  STEP 4  Exhaustive ensemble ablation (all 2/3/4-model combos)           │
- │     │    Optimize recall@50 via RRF, rank averaging, voting              │
- │     ▼                                                                     │
- │  STEP 5  Generate comprehensive analysis report (15+ figures)            │
- │     ▼                                                                     │
- │  STEP 6  Phase6 Discovery — Inference on new unlabeled MOFs              │
- │     │    → Consensus top-25 candidates for DFT validation                │
- │     ▼                                                                     │
- │  STEP 7  DFT Candidate Nomination — 28-Perspective Consensus Jury        │
- │          → Confidence-tiered top-25 for DFT calculations                 │
- └───────────────────────────────────────────────────────────────────────────┘
+  STEP 1   Extract pretrained 768-dim embeddings (PMTransformer)
+    |       Create Strategy D farthest-point train/val/test splits
+    v
+  STEP 2   Fine-tune PMTransformer for bandgap regression (3 seeds)
+    v
+  STEP 3   Train 15+ sklearn classifiers + kNN baselines on pretrained embeddings
+    v
+  STEP 4   Exhaustive ensemble ablation (all 2/3/4-model combos, optimise recall@50)
+    v
+  STEP 5   Generate comprehensive analysis report (15+ figures)
+    v
+  STEP 6   Discovery -- deploy models on new unlabeled MOFs, RRF consensus ranking
+    v
+  STEP 7   Diversity-aware DFT nomination (cluster + MMR + SOAP verification)
 ```
 
-**How the models work together:**
-
-- **Neural Networks (Step 2):** Fine-tuned MOFTransformer models that learn to *predict* bandgap values directly. They understand atomic structure. Each model (3 different random seeds) may make slightly different predictions — this diversity helps the ensemble.
-
-- **ML Classifiers (Step 3):** Scikit-learn models (Random Forest, SVM, etc.) trained on 768-dimensional embedding vectors extracted from the *pretrained* (not fine-tuned) MOFTransformer. They classify whether a MOF is likely low-bandgap based on its embedding proximity to known positives.
-
-- **Ensemble (Step 4):** Combines all models using Reciprocal Rank Fusion (RRF). Each model produces a ranked list of MOFs. RRF merges these lists by giving high scores to MOFs ranked highly by *multiple* models, without requiring the raw scores to be on the same scale.
-
-**Why two phases — validation then discovery:**
-
-The pipeline has two distinct stages with different goals:
-
-1. **Validation on labeled data (Steps 1–5):** We have ~10,000 MOFs with known DFT-computed HSE bandgaps. The labeled set is heavily imbalanced: ~600 training examples with ~60 positives, ~600 validation with ~7 positives, and ~8,800 test with only ~9 positives. We train models, then evaluate ensembles on this large test set where we *know* which MOFs are truly low-bandgap. The recall metrics and heatmaps from this phase prove that our ensemble can reliably push true low-bandgap MOFs to the top of a ranked list. This is the evidence that the models actually work — without it, deploying them on new data would be unjustified.
-
-2. **Discovery on unlabeled data (Step 6):** Once validated, we deploy the ensemble on a separate set of ~10,000 MOFs whose HSE bandgaps are unknown. The output is an enriched shortlist — the top 25, 50, or 100 candidates most likely to be low-bandgap — ranked by consensus across all models. Computing a MOF's true bandgap via DFT at the HSE level typically costs hours to days of CPU time per structure. By pre-screening thousands of candidates down to a high-confidence shortlist, the ensemble reduces the number of expensive DFT calculations by orders of magnitude while concentrating discovery on the structures most likely to be electronically interesting (conductive, narrow-gap semiconductor, photocatalytic, etc.).
-
-In short: Steps 1–5 answer *"can we find the needles in the haystack?"* using ground truth. Step 6 answers *"where are the needles in a new haystack?"* using the validated models.
+**Steps 1-5** validate the ensemble on ~10K MOFs with known HSE bandgaps (only ~76 positives across all splits -- a needle-in-a-haystack retrieval problem). **Steps 6-7** deploy the validated models on ~10K unlabeled MOFs and select the final 25 candidates for DFT calculation, prioritizing both prediction confidence and structural diversity.
 
 ---
 
@@ -89,897 +47,270 @@ In short: Steps 1–5 answer *"can we find the needles in the haystack?"* using 
 
 ```
 MOF-Bandgap-Discovery/
-├── README.md                             # This file
-├── LICENSE                               # MIT License
-├── requirements.txt                      # Python dependencies
+├── README.md
+├── LICENSE
+├── requirements.txt
 ├── .gitignore
 │
-├── src/                                  # Core Python modules (shared library)
-│   ├── train_regressor.py                #   MOFTransformer fine-tuning + metrics
-│   ├── embedding_classifier.py           #   15+ sklearn classifier methods
-│   ├── ensemble_discovery.py             #   RRF / exhaustive ensemble ablation
-│   ├── knn_baseline.py                   #   kNN regression & similarity baselines
-│   ├── generate_final_report.py          #   Analysis figures & markdown report
-│   ├── compare_results.py                #   Cross-method comparison reports
-│   ├── verify_ml_heatmap.py              #   ML performance heatmap verification
-│   ├── reinfer_nn.py                     #   Re-run NN inference from checkpoints
-│   ├── predict_with_embedding_classifier.py  # Predict on new data with saved models
-│   ├── extract_posttrain_embeddings.py   #   Extract post-finetune embeddings
-│   ├── pormake_screen.py                 #   Structural screening with PORMAKE
-│   ├── report_split_bandgap_distribution.py  # Split quality analysis
-│   ├── ml_training_plots.py              #   ML training analysis plots
-│   ├── umap_analysis_split_d.py          #   UMAP visualization (Strategy D split)
-│   ├── umap_analysis_original_split.py   #   UMAP on original split
-│   └── umap_posttrain.py                #   UMAP on post-finetune embeddings
+├── src/                        # Core Python modules
+│   ├── train_regressor.py      #   PMTransformer fine-tuning + metrics
+│   ├── embedding_classifier.py #   15+ sklearn classifier training
+│   ├── ensemble_discovery.py   #   RRF / exhaustive ensemble ablation
+│   ├── knn_baseline.py         #   kNN regression & similarity baselines
+│   ├── generate_final_report.py#   Analysis figures & markdown report
+│   └── ...                     #   (comparison, reinference, UMAP, etc.)
 │
-├── data_preparation/                     # Embedding extraction & data splitting
-│   ├── analyze_embeddings.py             #   Extract 768-dim pretrained embeddings
-│   ├── embedding_split.py                #   Strategy D farthest-point splits
-│   ├── resplit_data.py                   #   Re-create splits from scratch
-│   ├── repair_split_symlinks.py          #   Fix broken symlinks in split dirs
-│   ├── fix_split_symlinks.sh             #   Shell-based symlink repair helper
-│   └── extract_phase6_embeddings_pretrained.py  # Embeddings for new MOFs
+├── data_preparation/           # Embedding extraction & data splitting
+│   ├── analyze_embeddings.py
+│   ├── embedding_split.py      #   Strategy D farthest-point splits
+│   └── extract_unlabeled_embeddings.py
 │
-├── experiments/                          # NN experiment configurations (human-editable)
-│   ├── exp364_fulltune/                  #   seed=42, freeze=0, primary model
-│   │   ├── run.py                        #     ★ Hyperparameter config — edit this
-│   │   └── run.sh                        #     SLURM submission script
-│   ├── exp370_seed2/                     #   seed=123, ensemble variant
-│   │   ├── run.py
-│   │   └── run.sh
-│   └── exp371_seed3/                     #   seed=456, ensemble variant
-│       ├── run.py
-│       └── run.sh
+├── experiments/                # NN experiment configs (edit run.py per experiment)
+│   ├── exp364_fulltune/        #   seed=42,  primary model
+│   ├── exp370_seed2/           #   seed=123, ensemble variant
+│   └── exp371_seed3/           #   seed=456, ensemble variant
 │
-├── discovery/                            # Phase6: inference on unlabeled MOFs
-│   ├── run_inference_from_cwd.py         #   NN inference from checkpoint
-│   ├── phase6_discovery.py               #   Per-model + ensemble ranking
-│   ├── ensemble_phase6_predictions.py    #   RRF + type-balanced RRF on new data
-│   ├── phase6_ensemble_report.py         #   Discovery report + agreement + singles
-│   ├── plot_phase6_model_comparison.py   #   NN vs ML UMAP investigation
-│   ├── nominate_dft_candidates.py        #   Step 7: 28-perspective DFT nomination
-│   └── collect_inference_structures.sh   #   Gather MOF files from scattered dirs
+├── discovery/                  # Inference & nomination on unlabeled MOFs
+│   ├── run_inference_from_cwd.py
+│   ├── discovery_pipeline.py
+│   ├── ensemble_predictions.py
+│   ├── ensemble_report.py
+│   ├── plot_model_comparison.py
+│   └── nominate_diverse_dft.py #   Step 7: diversity-aware DFT nomination
 │
-├── scripts/                              # SLURM pipeline orchestration
-│   ├── config.sh                         #   ★ Centralized cluster configuration
-│   ├── 01_extract_embeddings.sh          #   Extract embeddings + create splits
-│   ├── 02_train_nn.sh                    #   Fine-tune MOFTransformer (3 seeds)
-│   ├── 03_train_ml.sh                    #   Train sklearn classifiers + kNN
-│   ├── 04_run_ensemble.sh                #   Exhaustive ensemble ablation
-│   ├── 05_generate_report.sh             #   Comprehensive analysis report
-│   ├── 06_run_discovery.sh               #   Phase6 — full inference pipeline
-│   └── optional/
-│       ├── run_umap_analysis.sh          #   UMAP embedding visualizations
-│       ├── run_verify_ml.sh              #   ML heatmap verification
-│       ├── run_reinfer.sh                #   Re-infer NN from checkpoints
-│       ├── run_screening.sh              #   Structural screening
-│       ├── run_phase6_ml_only.sh         #   Phase6 ML inference only (no GPU)
-│       ├── run_phase6_nn_only.sh         #   Phase6 NN inference only (GPU)
-│       ├── run_phase6_ensemble_custom.sh #   Phase6 custom model combination
-│       ├── run_phase6_ensemble_v2.sh     #   Enhanced report: type-balanced + cross-type
-│       ├── run_phase6_model_comparison.sh#   NN vs ML UMAP investigation
-│       └── run_dft_nomination.sh         #   Step 7: 28-perspective DFT nomination
+├── scripts/                    # SLURM pipeline orchestration
+│   ├── config.sh               #   Centralised cluster configuration
+│   ├── 01_extract_embeddings.sh
+│   ├── 02_train_nn.sh
+│   ├── 03_train_ml.sh
+│   ├── 04_run_ensemble.sh
+│   ├── 05_generate_report.sh
+│   ├── 06_run_discovery.sh
+│   ├── 07_nominate_candidates.sh
+│   └── optional/               #   UMAP, verify ML, reinfer, screening, etc.
 │
-├── tools/                                # Split modification utilities
-│   ├── move_test_negatives_to_val.py     #   Move samples between splits
-│   ├── move_val_to_test.py               #   Rebalance val/test sets
-│   └── fix_split_symlinks.sh             #   Repair symlinks after moving
+├── tools/                      # Split modification utilities
 │
-└── data/                                 # Data directory (not tracked in Git)
-    └── README.md                         #   Dataset format documentation
+└── data/                       # Data directory (not tracked in Git)
+    └── README.md               #   Dataset format documentation
 ```
 
 ---
-## Dataset Statistics
 
-The pipeline uses **HSE-level** bandgap data from the [QMOF Database](https://github.com/Andrew-S-Rosen/QMOF) (Rosen et al., 2021). HSE (Heyd–Scuseria–Ernzerhof) is a hybrid DFT functional that produces more accurate bandgap estimates than PBE, particularly for semiconductors and near-gap materials.
+## Getting Started
 
-| Dataset | MOF count | Purpose |
-|---------|-----------|--------|
-| **Labeled set** | ~10,000 MOFs | DFT-computed HSE bandgaps — used for training + evaluation (Steps 1-5) |
-| **Phase6 (unlabeled)** | ~10,000 MOFs | QMOF structures without HSE bandgaps — used for discovery (Step 6-7) |
-
-**Labeled set split** (Strategy D farthest-point coverage):
-
-| Split | Total | Positives (bandgap < 1.0 eV) | Positive rate |
-|-------|-------|------------------------------|---------------|
-| Train | ~600  | ~60  | ~10% |
-| Val   | ~600  | ~7   | ~1%  |
-| Test  | ~8,800 | ~9  | ~0.1% |
-
-> **Extreme class imbalance.** The positive class (HSE bandgap < 1.0 eV) represents only ~76 structures across all splits. The training set has ~60 positives out of ~600 (~10%), but the test set has only ~9 positives out of ~8,800 (~0.1%). This makes the task a **needle-in-a-haystack retrieval problem**: the models must push a handful of true positives to the very top of a list containing thousands of negatives. This is why the pipeline evaluates **recall@K** (how many of the 9 test positives appear in the top K predictions) rather than accuracy, and why ensemble fusion is critical — a single model may miss 2-3 of the 9 positives, but diverse models often recover different ones.
-
-**Phase6 data sourcing:** The ~10,000 Phase6 structures are QMOF MOFs whose bandgaps have NOT been computed at the HSE level. They are preprocessed into MOFTransformer format (`.grid`, `.griddata16`, `.graphdata`) using the same pipeline as the labeled set. A placeholder JSON (`test_bandgaps_regression.json`) maps each CIF ID to `0.0` since the true bandgap is unknown.
-
----
-## Prerequisites
+### Prerequisites
 
 | Requirement | Details |
 |-------------|---------|
-| **SLURM cluster** | GPU nodes with CUDA 12.x (for Steps 1, 2, 6c). Steps 3-5 need CPU only. |
-| **Python 3.9+** | Tested with Python 3.9.5 |
-| **MOFTransformer** | See [MOFTransformer repo](https://github.com/hspark1212/MOFTransformer). Provides the pretrained transformer model + data loaders. |
-| **MOF structure files** | Preprocessed into MOFTransformer format: `.grid`, `.griddata16`, `.graphdata` per MOF. See [data/README.md](data/README.md) for format details. |
-| **Bandgap labels** | JSON files mapping CIF IDs to bandgap values in eV. See [data/README.md](data/README.md). |
+| SLURM cluster | GPU nodes with CUDA 12.x (Steps 1, 2, 6). Steps 3-5 are CPU-only. |
+| Python 3.9+ | Tested with Python 3.9.5 |
+| MOFTransformer | `pip install moftransformer` ([docs](https://github.com/hspark1212/MOFTransformer)) |
+| MOF structure files | Preprocessed into MOFTransformer format (`.grid`, `.griddata16`, `.graphdata`). See [data/README.md](data/README.md). |
 
----
-
-## Installation
+### Installation
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/EYErbil/MOF-Bandgap-Discovery.git
 cd MOF-Bandgap-Discovery
-
-# 2. Create a virtual environment
-python -m venv venv
-source venv/bin/activate       # On Linux/Mac
-# venv\Scripts\activate        # On Windows
-
-# 3. Install Python dependencies
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# 4. Install MOFTransformer (follow their documentation for GPU support)
 pip install moftransformer
 ```
 
-### Cluster Setup
+### Configuration
 
-On a SLURM cluster, edit `scripts/config.sh` — this is the **only file** that contains cluster-specific paths. Every SLURM script sources it automatically:
+Edit `scripts/config.sh` -- the **only file** with cluster-specific paths:
 
 ```bash
-# scripts/config.sh — edit these 4 lines:
-export BASE_DIR="/path/to/MOF-Bandgap-Discovery"    # Where you cloned the repo
-export VENV_PATH="/path/to/venv/bin/activate"        # Your Python virtualenv
-export SLURM_PARTITION_GPU="ai"                      # Your GPU partition name
-export MODULE_LOADS="cuda/12.3 cudnn/8.9.5 python/3.9.5"  # Your module system
+export BASE_DIR="/path/to/MOF-Bandgap-Discovery"
+export VENV_PATH="/path/to/venv/bin/activate"
+export SLURM_PARTITION_GPU="ai"
+export MODULE_LOADS="cuda/12.3 cudnn/8.9.5 python/3.9.5"
 ```
 
-All other paths (data, experiments, results) are automatically derived from `BASE_DIR`.
-
-> **SBATCH headers:** Each SLURM script also has `#SBATCH --partition=ai --account=ai --qos=ai` at the top. Since SBATCH directives are parsed before bash runs, these cannot reference shell variables. If your cluster uses different partition names or does not require `--account`/`--qos`, edit the `#SBATCH` lines at the top of each script in `scripts/` to match your environment.
+Each SLURM script also has `#SBATCH` headers for partition/account/QoS. Edit those to match your cluster if the partition names differ.
 
 ---
 
-## Quick Start (6 Commands)
+## Running the Pipeline
 
-After installation and data preparation:
+Submit each step after the previous one completes. Check job status with `squeue -u $USER`.
 
-```bash
-# 1. Configure your cluster (one-time)
-#    Edit scripts/config.sh with your paths
-
-# 2. Run the full pipeline — each step depends on the previous one:
-sbatch scripts/01_extract_embeddings.sh     # GPU, ~2-4h   — embeddings + splits
-sbatch scripts/02_train_nn.sh               # GPU, ~24-69h — 3 NN experiments
-sbatch scripts/03_train_ml.sh               # CPU, ~2-6h   — 15+ sklearn classifiers
-sbatch scripts/04_run_ensemble.sh           # CPU, ~1-2h   — exhaustive ensemble search
-sbatch scripts/05_generate_report.sh        # CPU, ~15min  — analysis report
-sbatch scripts/06_run_discovery.sh          # GPU, ~4-8h   — inference on new MOFs (optional)
-```
-
-Wait for each job to complete before submitting the next. Check job status with:
-```bash
-squeue -u $USER
-```
-
----
-
-## Detailed Walkthrough
-
-### Step 1: Extract Embeddings & Create Splits
+### Step 1: Extract Embeddings and Create Splits
 
 ```bash
-sbatch scripts/01_extract_embeddings.sh
+sbatch scripts/01_extract_embeddings.sh    # GPU, ~2-4h
 ```
 
-| Substep | What happens | Output |
-|---------|-------------|--------|
-| 1a | Loads the **pretrained** MOFTransformer (no fine-tuning) and extracts a 768-dimensional CLS embedding vector for every MOF in the dataset. These embeddings capture structural and chemical information learned during MOFTransformer's pretraining. | `data/embeddings/embeddings_pretrained.npz` |
-| 1b | Creates **Strategy D** train/val/test splits using farthest-point sampling in embedding space. This guarantees every positive (low-bandgap) MOF in val/test has at least one structurally similar positive in the training set. | `data/splits/strategy_d_farthest_point/` |
-
-**Why Strategy D?** Standard random splits can leave validation positives completely isolated — surrounded only by high-bandgap MOFs in embedding space. If the model has never seen a similar low-bandgap MOF during training, high recall on that positive is meaningless. Strategy D uses farthest-point coverage to methodically ensure structural diversity in every split, yielding honest evaluation metrics.
-
----
+Extracts 768-dim CLS embeddings from the pretrained PMTransformer for every MOF. Creates **Strategy D** train/val/test splits using farthest-point sampling in embedding space, ensuring every positive in val/test has a structurally similar positive in training.
 
 ### Step 2: Train Neural Network Regressors
 
 ```bash
-sbatch scripts/02_train_nn.sh
+sbatch scripts/02_train_nn.sh              # GPU, ~24-69h
 ```
 
-Fine-tunes MOFTransformer for bandgap regression. Three experiments with different random seeds create diverse models for the ensemble:
+Fine-tunes PMTransformer for bandgap regression with three random seeds (`exp364`, `exp370`, `exp371`). Each experiment is configured via `experiments/<name>/run.py` -- edit hyperparameters there directly. Key settings: Huber loss, mean pooling, early stopping on validation Spearman rho.
 
-| Experiment | Seed | Purpose |
-|------------|------|---------|
-| `exp364_fulltune` | 42 | Primary model |
-| `exp370_seed2` | 123 | Ensemble diversity |
-| `exp371_seed3` | 456 | Ensemble diversity |
-
-**Shared hyperparameters** (configured in each experiment's `run.py`):
-
-| Parameter | Value | What it does |
-|-----------|-------|-------------|
-| `loss_type` | `"huber"` | Huber loss — robust to outlier bandgaps (unlike MSE) |
-| `pooling_type` | `"mean"` | Average over all atom token embeddings (not just the CLS token) |
-| `learning_rate` | `1e-4` | Base LR for the pretrained transformer backbone |
-| `lr_mult` | `10.0` | The regression head trains at 10× the backbone LR |
-| `es_monitor` | `"val/spearman_rho"` | Early stopping tracks ranking quality, not loss magnitude |
-| `es_mode` | `"max"` | Higher Spearman ρ = better ranking = stop improving |
-| `patience` | `15` | Stop if val/spearman_rho doesn't improve for 15 epochs |
-| `freeze_layers` | `0` | All transformer layers are fine-tuned (not frozen) |
-| `batch_size` | `32` | Total batch size (split across GPUs as `per_gpu_batchsize=8`) |
-| `max_epochs` | `100` | Hard cap; early stopping usually triggers around epoch 30-50 |
-| `weight_decay` | `0.01` | L2 regularization |
-| `use_sample_weights` | `False` | No upweighting of minority class |
-
-**Outputs per experiment** (saved in `experiments/<exp_name>/`):
-
-| File | Description |
-|------|-------------|
-| `best_es-*.ckpt` | Best checkpoint by validation Spearman ρ |
-| `test_predictions.csv` | Per-MOF bandgap predictions (columns: `cif_id`, `target`, `prediction`) |
-| `final_results.json` | All test metrics (Spearman, MAE, recall@K, etc.) |
-| `training_dashboard.png` | Loss/metric curves over training |
-| `discovery_curve.png` | Recall vs. top-K plot |
-
-> **To train experiments in parallel** (faster on multi-GPU clusters):
-> ```bash
-> cd experiments/exp364_fulltune && sbatch run.sh
-> cd experiments/exp370_seed2   && sbatch run.sh
-> cd experiments/exp371_seed3   && sbatch run.sh
-> ```
-
-See [Customizing Experiments](#customizing-experiments) to create your own experiment configurations.
-
----
-
-### Step 3: Train ML Classifiers & kNN Baselines
+### Step 3: Train ML Classifiers
 
 ```bash
-sbatch scripts/03_train_ml.sh
+sbatch scripts/03_train_ml.sh              # CPU, ~2-6h
 ```
 
-Trains **15+ classifiers** directly on the 768-dim pretrained embeddings. **No GPU needed** — these are traditional sklearn models that treat each MOF as a 768-feature vector.
-
-**Why use pretrained embeddings (not fine-tuned)?** The pretrained MOFTransformer CLS token already captures rich structural information. Training sklearn classifiers on these gives a complementary signal — they find positives by structural *similarity* rather than learned bandgap prediction.
-
-**Base methods:**
-
-| Method | What it does |
-|--------|-------------|
-| Logistic Regression | Linear boundary in embedding space |
-| SVM-RBF | Non-linear kernel boundary |
-| Random Forest | Ensemble of decision trees on embedding features |
-| Extra Trees | Like RF but with randomized split thresholds |
-| Gradient Boosting | Sequential boosted trees |
-| XGBoost | Optimized gradient boosting |
-| LDA | Linear Discriminant Analysis |
-| Mahalanobis distance | Distance to positive class centroid |
-| Gaussian Mixture Model | Density estimation for positive class |
-| Isolation Forest | Anomaly detection (positives as anomalies) |
-
-**Enhanced methods** (enabled with `--enhanced`):
-
-| Method | What it does |
-|--------|-------------|
-| SMOTE-RF, SMOTE-ET, SMOTE-LR | Synthetic minority oversampling before training |
-| Two-stage (kNN → Extra Trees) | Pre-filter with kNN, then classify with ET |
-| Feature-selected variants | Automatic feature selection before classification |
-
-**kNN baselines:**
-
-| Method | What it does |
-|--------|-------------|
-| k-NN regression | Distance-weighted average of k nearest neighbors' bandgaps |
-| Similarity-to-positive | Max cosine similarity to any training positive |
-| Hybrid (NN + kNN) | Combine neural network score with kNN score |
-| Novelty-aware | Flag MOFs that are far from all training data |
-
-**Outputs:**
-- `data/embedding_classifiers/strategy_d_farthest_point/<method>/model.joblib` — Saved model
-- `data/embedding_classifiers/strategy_d_farthest_point/<method>/test_predictions.csv` — Predictions
-- `data/knn_results/strategy_d_farthest_point/test_predictions.csv` — kNN predictions
-
----
+Trains 15+ sklearn classifiers (Random Forest, SVM, Extra Trees, XGBoost, SMOTE variants, etc.) and kNN baselines on the 768-dim pretrained embeddings. No GPU needed.
 
 ### Step 4: Exhaustive Ensemble Ablation
 
 ```bash
-sbatch scripts/04_run_ensemble.sh
+sbatch scripts/04_run_ensemble.sh          # CPU, ~1-2h
 ```
 
-This is where the pipeline finds the **optimal combination of models**. It tests *every possible 2/3/4-model subset* from all trained models and evaluates which combination maximizes **recall@50** (the fraction of true positives found in the top 50 candidates).
-
-**This script runs three phases:**
-
-**Phase C — Exhaustive search:**
-- Collects all models with `test_predictions.csv` (NN experiments + sklearn + kNN)
-- Tests every 2-model, 3-model, and 4-model combination
-- For each combination, applies 5 ensemble methods:
-
-  | Ensemble method | How it works |
-  |----------------|-------------|
-  | **Reciprocal Rank Fusion** (RRF, k=60) | Score = Σ 1/(k + rank_i). Robust to different score scales. |
-  | **Rank averaging** | Average of per-model ranks |
-  | **Top-K voting** | Count how many models place the MOF in their top-K |
-  | **Score averaging** | Average of min-max normalized scores |
-  | **Weighted RRF** | Like RRF but weights models by individual quality |
-
-- Reports the best 2/3/4-model combinations in `recommended_combinations.txt`
-
-**Phase D — Selective ensemble:**
-- Uses only signal-bearing models (those with recall significantly above random baseline)
-- Provides a curated default ensemble
-
-**Phase E — Comparison report:**
-- Cross-method comparison of all individual models and ensemble results
-
-**Outputs:**
-- `data/ensemble_results/exhaustive/` — All exhaustive search results
-- `data/ensemble_results/selective/` — Signal-bearing models only
-- `data/comparison_report/` — Cross-method comparison
-
----
+Tests every 2/3/4-model combination across five fusion methods (RRF, rank averaging, voting, score averaging, weighted RRF). Reports the optimal combination maximising recall@50 on the labeled test set.
 
 ### Step 5: Generate Report
 
 ```bash
-sbatch scripts/05_generate_report.sh
+sbatch scripts/05_generate_report.sh       # CPU, ~15min
 ```
 
-Reads all results and produces **15+ figures with full metrics** and a markdown summary:
+Produces 15+ figures: recall heatmaps, complementarity analysis, confusion matrices, bandgap distributions, and a markdown summary in `data/final_results/`.
 
-- Model leaderboard (ensemble vs. individual methods)
-- Discovery confusion matrices (top-K)
-- Recall/precision curves per model
-- Complementarity analysis (which MOFs does each model uniquely discover?)
-- Bandgap distribution and metal center breakdowns
-- Top-20 candidate lists with structural metadata
-
-**Output:** `data/final_results/` (summary.md + fig*.png)
-
----
-
-### Step 6: Discovery on New MOFs (Optional)
+### Step 6: Discovery on Unlabeled MOFs
 
 ```bash
-sbatch scripts/06_run_discovery.sh
+sbatch scripts/06_run_discovery.sh         # GPU, ~4-8h
 ```
 
-Applies ALL trained models to a **new, unlabeled** MOF dataset and produces a consensus ranking of candidates for DFT validation.
+Deploys all trained models on a new unlabeled MOF dataset (~10K structures). Extracts embeddings, runs ML and NN inference, then fuses predictions via RRF to produce a consensus ranking. Before running, prepare the data:
 
-**This is the deployment step** — where you use your trained pipeline to discover real candidates.
+1. Place MOF structure files in `data/unlabeled/` (see [data/README.md](data/README.md))
+2. Create `data/unlabeled/test_bandgaps_regression.json` mapping CIF IDs to placeholder bandgap values (`0.0`)
 
-**Before running**, prepare the new data:
+Edit `NN_EXPERIMENTS` and `ML_METHODS` at the top of the script to select which models to deploy.
 
-1. Place MOF structure files in `data/phase6/` (see [data/README.md](data/README.md))
-2. Create `data/phase6/test_bandgaps_regression.json` with CIF IDs as keys (bandgap values can be `0.0` as placeholders since they are unknown)
-3. Optionally, use `discovery/collect_inference_structures.sh` to gather scattered structure files into the right directory
-
-**What 06_run_discovery.sh does (5 substeps):**
-
-| Substep | Action | Output |
-|---------|--------|--------|
-| 6a | Extract pretrained embeddings for new MOFs | `data/phase6/embedding_analysis/Phase6_embeddings.npz` |
-| 6b | Score with saved sklearn models | `data/phase6/ml_predictions/<method>/test_predictions.csv` |
-| 6c | Run NN forward pass from checkpoints | `experiments/<exp>/inference_predictions.csv` |
-| 6d | Ensemble all predictions → consensus top-25 | `data/phase6/inference_results/top25_for_DFT_rrf.txt` |
-| 6e | Agreement analysis + per-model evaluation + type-group sub-ensembles | `data/phase6/ensemble_report/` |
-
-**Configuration** (edit at the top of the script):
-```bash
-NN_EXPERIMENTS="exp364_fulltune exp370_seed2 exp371_seed3"  # Which NN models to use
-ML_METHODS="smote_extra_trees smote_random_forest"           # Which ML models (SMOTE pair = best)
-TOP_K=25  # How many top candidates to report
-```
-
-**Running individual substeps independently:**
-
-If you want to run ML or NN inference separately (e.g., ML first on CPU, NN later when a GPU is free), use the optional per-step scripts:
+### Step 7: Diversity-Aware DFT Candidate Nomination
 
 ```bash
-# ML inference only (CPU, no GPU needed)
-sbatch scripts/optional/run_phase6_ml_only.sh
-
-# NN inference only (GPU)
-sbatch scripts/optional/run_phase6_nn_only.sh
-
-# Custom ensemble — pick exactly which models to combine
-# Edit ML_MODELS and NN_EXPERIMENTS inside the script first
-sbatch scripts/optional/run_phase6_ensemble_custom.sh
+sbatch scripts/07_nominate_candidates.sh   # CPU, ~1-2h
 ```
 
-These are subsets of `06_run_discovery.sh` for when you need more control.
+This is the final step: selecting 25 structures for DFT bandgap calculation. Rather than taking the top 25 by score, the pipeline ensures structural diversity:
 
----
+1. **RRF shortlist** -- Build a pool of the top 500 candidates from 1 NN + 1 ML model fused by RRF
+2. **Cluster** -- PCA-50 + KMeans groups the pool into 20 structural clusters
+3. **Diverse selection** via four strategies:
+   - **A. Cluster-quota round-robin** -- best candidate per cluster, cycling until budget is filled
+   - **B. Maximal Marginal Relevance (MMR)** -- iteratively picks the candidate that best balances quality and distance from already-selected nominees
+   - **C. Uncertainty-weighted quota** -- like A, but ranks within clusters by a combined quality + NN-ML disagreement score
+   - **D. Long-tail exploration** -- reserves 5 slots for high-disagreement structures outside the top-500 pool
+4. **Combined list** -- structures nominated by the most strategies are selected first
 
-### Step 7: DFT Candidate Nomination (Multi-Perspective Consensus)
+The script runs twice: once using PMTransformer embeddings as the diversity space, once using SOAP descriptors. SOAP-based diversity is preferred because it provides a purely geometric measure of structural similarity, independent of the learned representations.
 
-```bash
-sbatch scripts/optional/run_dft_nomination.sh
-```
-
-After Step 6 produces per-model predictions, Step 7 systematically evaluates **28 balanced ensemble perspectives** and selects the final top-25 structures for DFT bandgap calculation using a **confidence-tiered consensus vote**.
-
-#### Why a 28-Perspective Jury?
-
-Step 6 already produces a consensus top-25 list by fusing all model predictions. But different fusion methods (RRF, rank averaging, type-balanced RRF) and different model subsets can yield meaningfully different rankings. A structure that appears in the top-25 of *one* particular ensemble might be an artifact of that specific fusion; a structure that appears across *21 out of 28* independent perspectives is a robust discovery.
-
-The 28-perspective jury tests every balanced model combination across multiple fusion methods. "Balanced" means every combination uses equal numbers of NN and ML models — this prevents the NN domination problem (Jaccard = 0.0 between NN and ML top-25 lists) that occurs when 3 NNs outvote 2 ML classifiers in unbalanced ensembles.
-
-#### Perspective Groups
-
-| Group | Composition | Fusion Method | Count | Rationale |
-|-------|------------|---------------|-------|-----------|
-| **A** | Individual models | Own scores | 5 | Baseline: what does each model alone recommend? |
-| **B** | 1 NN + 1 ML pairs | RRF (k=60) | 6 | All 3×2 cross-paradigm pairs via rank fusion |
-| **C** | 1 NN + 1 ML pairs | Rank Averaging | 6 | Same pairs, different fusion — tests robustness |
-| **D** | 2 NN + 2 ML quads | RRF | 3 | C(3,2)=3 NN pairs × 1 ML pair, rank fusion |
-| **E** | 2 NN + 2 ML quads | Rank Averaging | 3 | Same quads, different fusion |
-| **F** | 2 NN + 2 ML quads | Type-Balanced RRF | 3 | 2-stage RRF ensuring 50/50 type balance |
-| **G** | Full 3 NN + 2 ML | Type-Balanced RRF + Type-Balanced Rank Avg | 2 | Global consensus with type balance |
-| | | **Total** | **28** | |
-
-**Score averaging is deliberately excluded**: normalizing NN regression bandgaps (eV) against ML classification probabilities (0–1) is unreliable. All fusion methods operate on ranks, not raw scores.
-
-#### Fusion Methods Explained
-
-- **Reciprocal Rank Fusion (RRF)**: `score(cid) = Σ 1/(k + rank_i)`, with k=60. Gives high scores to structures ranked highly by multiple models. Rank-based, so it handles heterogeneous score scales naturally.
-- **Rank Averaging**: `score(cid) = mean(rank_i)`. The simplest rank-based fusion — assigns each structure the average of its ranks across models.
-- **Type-Balanced RRF**: Two-stage process. Stage 1: RRF separately within each model type (NN consensus, ML consensus). Stage 2: RRF across the two type-level scores. This guarantees exactly 50/50 contribution from each model family, regardless of how many models are in each group.
-
-#### Confidence Tiers and Nomination Logic
-
-After all 28 perspectives produce their top-K rankings, vote counting determines how many perspectives place each structure in their top-K:
-
-| Tier | Threshold | Meaning |
-|------|-----------|---------|
-| **Tier 1** (Very High) | ≥ 75% votes (≥ 21/28) | Structure appears in the vast majority of perspectives |
-| **Tier 2** (High) | ≥ 50% votes (≥ 14/28) | Structure appears in at least half of perspectives |
-| **Tier 3** (Moderate) | ≥ 25% votes (≥ 7/28) | Structure appears in at least a quarter of perspectives |
-
-**Nomination algorithm**:
-1. Auto-include all Tier 1 + Tier 2 structures (highest confidence).
-2. If fewer than 25: fill from Tier 3 ordered by (votes descending, average rank ascending).
-3. If still fewer: fill from remaining structures by average rank ascending.
-4. If more than 25 at Tier 2: take the top 25 overall by (votes desc, avg rank asc).
-
-All thresholds (75%, 50%, 25%) and the target count (25) are CLI-configurable.
-
-#### Configuration
+**Key parameters** (edit at the top of `scripts/07_nominate_candidates.sh`):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--base_dir` | `.` | Phase6 working directory containing experiments/ and embedding_classifiers/ |
-| `--output_dir` | `DFT-subset-Nomination` | Output directory (relative to base_dir unless absolute) |
-| `--top_k` | `25` | Number of structures each perspective ranks, and the nomination target |
-| `--rrf_k` | `60` | RRF smoothing constant (standard value from the literature) |
-| `--tier1_pct` | `0.75` | Tier 1 threshold as a fraction of total perspectives |
-| `--tier2_pct` | `0.50` | Tier 2 threshold |
-| `--tier3_pct` | `0.25` | Tier 3 threshold |
-| `--skip_umap` | off | Skip UMAP visualization (faster; no umap-learn dependency) |
+| `NN_EXP` | `exp364_fulltune` | Which NN experiment to use |
+| `ML_METHOD` | `extra_trees` | Which ML classifier to use |
+| `POOL_SIZE` | `500` | Size of RRF shortlist pool |
+| `N_CLUSTERS` | `20` | Number of KMeans clusters |
+| `BUDGET` | `25` | Number of structures to nominate |
+| `EXPLORATION_BUDGET` | `5` | Slots reserved for long-tail picks |
 
-#### Output Directory
+**Outputs:**
 
 ```
-DFT-subset-Nomination/
-├── FINAL_DFT_TOP25.txt             # ★ The 25 CIF IDs to submit for DFT
-├── FINAL_DFT_TOP25.csv             # With votes, tiers, avg rank, nomination reason
-├── full_consensus_ranking.csv      # All ~10,000 structures ranked by consensus
-├── nomination_report.md            # Full methodology + results as markdown
-├── perspective_summary.json        # Machine-readable perspective data (28 entries)
-├── individual_models/              # Per-model top-25 lists (5 files)
-├── balanced_ensembles/
-│   ├── pairs/                      # 1NN+1ML pair results (12 files: 6 RRF + 6 rank_avg)
-│   ├── quads/                      # 2NN+2ML quad results (9 files)
-│   └── full/                       # Full 3NN+2ML results (2 files)
-└── plots/                          # 7 publication-quality figures
-    ├── consensus_votes_barplot.png # Horizontal bar chart colored by tier
-    ├── consensus_heatmap.png       # Binary heatmap: nominees × 28 perspectives
-    ├── perspective_agreement_jaccard.png  # 28×28 Jaccard similarity
-    ├── nn_ml_agreement.png         # NN vs ML individual overlap with nominees
-    ├── acceptance_ratio.png        # Per-perspective acceptance ratio
-    ├── rank_stability_boxplot.png  # Rank variance across perspectives per nominee
-    └── umap_nominees.png           # UMAP of all MOFs with nominees highlighted
+data/unlabeled/nomination-SOAP/
+├── FINAL_TOP25_diverse.txt    # The 25 CIF IDs for DFT
+├── FINAL_TOP25_diverse.csv    # With RRF ranks, cluster IDs, uncertainty metrics
+├── shortlist_pool.csv         # Full shortlist with cluster assignments
+├── diversity_report.md        # Methodology and comparison with old nominees
+└── plots/                     # UMAP visualisations
 ```
-
-#### How to Interpret the Results
-
-- **`FINAL_DFT_TOP25.txt`**: The primary output. These 25 CIF IDs are the structures where the majority of 28 independent balanced perspectives agree: "this MOF is very likely low-bandgap." Submit these for DFT bandgap calculation.
-
-- **Tier distribution**: If all 25 nominees are Tier 1, the consensus is very strong — diverse model combinations consistently agree. If nominees span Tiers 1–3, the top ones are high-confidence and the bottom ones are gap-fillers.
-
-- **`consensus_heatmap.png`**: Each row is a structure, each column is one of the 28 perspectives. Green = that perspective includes the structure in its top-25. A fully green row means unanimous support; a patchy row means the structure is borderline.
-
-- **`rank_stability_boxplot.png`**: For each nominee, shows the distribution of its rank across all 28 perspectives. A tight box near rank 1 means the structure is consistently top-ranked; a wide box means some perspectives rank it much lower.
-
-- **`perspective_agreement_jaccard.png`**: Shows how much each perspective's top-25 overlaps with every other perspective's top-25. High intra-group similarity (e.g., all Quad-RRF perspectives mostly agree) and lower inter-group similarity (NN-only vs ML-only disagree) is the expected pattern that motivates balanced ensembles.
 
 ---
 
-### What the Results Mean
+## Customisation
 
-**From the labeled split (Steps 2–5):**
-
-The ensemble and individual models are evaluated on a test set where every MOF has a known DFT-computed bandgap. The key outputs are:
-
-- **Recall@K heatmaps** — for each model and ensemble, what fraction of the true low-bandgap MOFs (bandgap < 1.0 eV) appear in the top K predictions? A high recall@25 means the model pushes real positives to the very top of its ranked list. The heatmap across all models and ensemble methods shows exactly which combinations are best at recovering known positives.
-- **Complementarity analysis** — which MOFs does each model *uniquely* discover? If Model A finds 8 out of 10 positives and Model B finds a different 8 out of 10, their ensemble may find 10 out of 10. The report quantifies this overlap.
-- **Confusion matrices and precision/recall curves** — standard classification diagnostics on the binary "low-bandgap vs. not" task, so you can characterize false positive rates and model confidence.
-
-These results establish **trust in the ensemble** before deploying it on unknown data. If recall@50 on the labeled test set is, say, 80%, you have concrete evidence that the models rank true positives highly — and can expect similar enrichment on new data drawn from the same chemical space.
-
-**From unlabeled discovery (Step 6):**
-
-When the validated ensemble is applied to new MOFs with unknown bandgaps, there is no ground truth to compute recall against. Instead, the outputs focus on **consensus and confidence**:
-
-- **`top25_for_DFT_rrf.txt`** — the 25 MOFs ranked highest by the RRF ensemble. These are the structures where multiple independent models agree: "this MOF is very likely low-bandgap." This is the shortlist to prioritize for DFT validation.
-- **Agreement heatmaps** — which models agree on which candidates? A MOF flagged by 6 out of 7 models is a stronger candidate than one flagged by 2. The heatmap makes this visible at a glance.
-- **Per-model rankings** — individual model predictions are preserved so researchers can inspect whether a candidate is favored primarily by structural-similarity classifiers, by the regression NN, or by both.
-
-The practical outcome: instead of running DFT on all N thousand candidate MOFs (each calculation costing hours to days of compute time), you run DFT on 25–100 high-confidence candidates selected by the ensemble. This focuses expensive computational resources on the structures most likely to exhibit the target property — low bandgap, and by extension, potential conductivity, photocatalytic activity, or suitability for electronic device integration.
-
----
-
-## Customizing Experiments
-
-Each experiment lives in its own directory under `experiments/` and is defined by a single file: **`run.py`**. This is the human-editable hyperparameter interface — the place where you control how the neural network trains.
-
-### How experiments work
-
-```
-experiments/exp364_fulltune/
-├── run.py      ← You edit this: all hyperparameters are plain Python arguments
-└── run.sh      ← SLURM submission script (usually no edits needed)
-```
-
-`run.py` imports the `run()` function from `src/train_regressor.py` and calls it with your chosen hyperparameters. The training script handles everything else: data loading, model creation, training loop, early stopping, test evaluation, and result saving.
-
-### Creating a new experiment
-
-1. **Copy an existing experiment directory:**
-   ```bash
-   cp -r experiments/exp364_fulltune experiments/exp999_my_experiment
-   ```
-
-2. **Edit `run.py`** — change any hyperparameters you want to explore:
-   ```python
-   # experiments/exp999_my_experiment/run.py
-   run(
-       data_dir=args.data_dir,
-       downstream="bandgaps_regression",
-       threshold=1.0,
-       loss_type="huber",          # Try: "mse", "huber", "mae"
-       pooling_type="mean",        # Try: "mean", "cls"
-       freeze_layers=0,            # Try: 0 (full finetune), 1, 2, 3 (freeze bottom N)
-       use_sample_weights=False,   # Try: True (upweight rare positives)
-       es_monitor="val/spearman_rho",
-       es_mode="max",
-       batch_size=32,
-       per_gpu_batchsize=8,
-       learning_rate=1e-4,         # Try: 5e-5, 1e-4, 3e-4
-       weight_decay=0.01,
-       lr_mult=10.0,               # Regression head LR multiplier
-       max_epochs=100,
-       patience=15,                # Early stopping patience
-       log_dir=".",
-       seed=42,                    # Change seed for ensemble diversity
-       num_workers=4,
-   )
-   ```
-
-3. **Run it:**
-   ```bash
-   cd experiments/exp999_my_experiment
-   sbatch run.sh
-   # or via the central script with --exp:
-   sbatch scripts/02_train_nn.sh --exp exp999_my_experiment
-   ```
-
-4. **After training**, the experiment directory will contain:
-   ```
-   experiments/exp999_my_experiment/
-   ├── run.py                      # Your config (unchanged)
-   ├── run.sh                      # SLURM script
-   ├── best_es-*.ckpt              # Best checkpoint
-   ├── test_predictions.csv        # Per-MOF predictions ← used by ensemble
-   ├── final_results.json          # All metrics
-   ├── training_dashboard.png      # Training curves
-   └── discovery_curve.png         # Recall vs top-K
-   ```
-
-5. **The new experiment is automatically picked up by the ensemble.** When you re-run `04_run_ensemble.sh`, it discovers all experiments with `test_predictions.csv` and includes them in the ablation search.
-
-### Key parameters to tune
-
-| Parameter | Effect | Suggested range |
-|-----------|--------|----------------|
-| `seed` | Different random initialization → different model for ensemble diversity | Any integer |
-| `freeze_layers` | 0 = full finetune (best), 1-3 = freeze bottom layers (faster, less overfitting risk) | 0-3 |
-| `learning_rate` | Base LR for transformer backbone | 5e-5 to 3e-4 |
-| `lr_mult` | How much faster the regression head trains vs backbone | 1.0 to 20.0 |
-| `loss_type` | `"huber"` is robust to outliers; `"mse"` penalizes large errors more | `"huber"`, `"mse"` |
-| `pooling_type` | `"mean"` averages all atom tokens; `"cls"` uses only CLS token | `"mean"`, `"cls"` |
-| `use_sample_weights` | Upweight rare positives if class imbalance is severe | `True`, `False` |
-| `patience` | Epochs without improvement before stopping | 10-30 |
-
----
-
-## Custom Ensembles
-
-### On labeled data (Step 4)
-
-The default `04_run_ensemble.sh` tests *every* model combination exhaustively. But if you want to run a specific subset:
+### Adding a new NN experiment
 
 ```bash
-# Edit the PRED_DIRS variable in the script, or call ensemble_discovery.py directly:
-python src/ensemble_discovery.py \
-    --prediction_dirs \
-        experiments/exp364_fulltune \
-        experiments/exp370_seed2 \
-        data/embedding_classifiers/strategy_d_farthest_point/extra_trees \
-        data/embedding_classifiers/strategy_d_farthest_point/smote_extra_trees \
-    --output_dir data/ensemble_results/my_custom_combo \
-    --threshold 1.0 \
-    --rrf_k 60 \
-    --ablation
+cp -r experiments/exp364_fulltune experiments/exp999_my_experiment
+# Edit experiments/exp999_my_experiment/run.py — change seed, LR, freeze_layers, etc.
+cd experiments/exp999_my_experiment && sbatch run.sh
 ```
 
-Each directory passed to `--prediction_dirs` must contain a `test_predictions.csv`.
+The ensemble ablation (Step 4) automatically discovers all experiments with `test_predictions.csv`.
 
-### On unlabeled data (Phase6)
+### Key hyperparameters (in each experiment's `run.py`)
 
-Use the custom ensemble script described in [Step 6](#step-6-discovery-on-new-mofs-optional):
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `seed` | varies | Different initialisation for ensemble diversity |
+| `freeze_layers` | `0` | 0 = full finetune; 1-3 = freeze bottom layers |
+| `learning_rate` | `1e-4` | Base LR for transformer backbone |
+| `lr_mult` | `10.0` | Regression head trains at 10x backbone LR |
+| `loss_type` | `"huber"` | Robust to outlier bandgaps (vs MSE) |
+| `patience` | `15` | Early stopping patience (epochs) |
+
+### Optional analysis scripts
 
 ```bash
-# 1. Edit the model selection at the top of the script:
-#    ML_MODELS="extra_trees smote_extra_trees smote_random_forest"
-#    NN_EXPERIMENTS="exp364_fulltune exp370_seed2"
-#    USE_NN=1
-
-# 2. Submit:
-sbatch scripts/optional/run_phase6_ensemble_custom.sh
+sbatch scripts/optional/run_umap_analysis.sh        # UMAP embedding visualisations
+sbatch scripts/optional/run_verify_ml.sh             # ML performance heatmap
+sbatch scripts/optional/run_reinfer.sh               # Recompute NN predictions from checkpoints
+sbatch scripts/optional/run_screening.sh             # Structural screening with PORMAKE
+sbatch scripts/optional/run_discovery_ml_only.sh     # ML-only inference (CPU, no GPU)
+sbatch scripts/optional/run_discovery_nn_only.sh     # NN-only inference (GPU)
+sbatch scripts/optional/run_model_comparison.sh      # NN vs ML UMAP investigation
 ```
-
-The output directory is auto-named based on your selection (e.g., `ensemble_results/custom_extra_trees_smote_extra_trees_exp364_fulltune_exp370_seed2/`).
 
 ---
 
-## Split Modification Workflow
+## Data
 
-If you need to modify the train/val/test splits after initial training (e.g., move a specific MOF from test to val), use the tools in `tools/`:
+Each MOF is represented by three files (`.grid`, `.griddata16`, `.graphdata`) in MOFTransformer format. Labels are JSON files mapping CIF IDs to bandgap values in eV; the classification threshold is **bandgap < 1.0 eV** (positive = potentially conductive). See [data/README.md](data/README.md) for format details.
 
-```
-Step 1: Modify the split
-─────────────────────────
-  python tools/move_test_negatives_to_val.py   # Move negatives from test → val
-  # or
-  python tools/move_val_to_test.py             # Move samples from val → test
+| Dataset | MOFs | Purpose |
+|---------|------|---------|
+| Labeled (QMOF, HSE level) | ~10,000 | Training + evaluation (Steps 1-5) |
+| Unlabeled | ~10,000 | Discovery screening (Steps 6-7) |
 
-Step 2: Fix file symlinks
-─────────────────────────
-  bash tools/fix_split_symlinks.sh             # Repair broken symlinks from the move
-
-Step 3: Re-run NN inference (model weights are NOT retrained — only test set changed)
-──────────────────────────
-  sbatch scripts/optional/run_reinfer.sh       # Re-produces test_predictions.csv
-                                               # from existing checkpoints
-
-Step 4: Re-run ensemble
-───────────────────────
-  sbatch scripts/04_run_ensemble.sh            # Recompute ensemble with new predictions
-```
-
-**Important:** `run_reinfer.sh` does NOT retrain the models. It loads the saved checkpoints and re-runs the test inference on the updated test set. This is fast (~5-10 min on GPU) and verifies that predictions for unchanged MOFs are identical to before (within GPU non-determinism tolerance ~1e-5).
-
----
-
-## Optional Analysis Scripts
-
-These scripts provide additional analysis and visualization. None are required for the core pipeline.
-
-```bash
-# UMAP embedding visualizations — see how MOFs cluster in 2D
-sbatch scripts/optional/run_umap_analysis.sh
-
-# ML performance heatmap — verify classifier performance across metrics
-sbatch scripts/optional/run_verify_ml.sh
-
-# Re-infer NN predictions — recompute test_predictions.csv from checkpoints
-# (use after modifying splits, see Split Modification Workflow above)
-sbatch scripts/optional/run_reinfer.sh
-
-# Structural screening with PORMAKE — filter by pore size, surface area, etc.
-sbatch scripts/optional/run_screening.sh
-
-# Phase6 — run ML models only (CPU, no GPU needed)
-sbatch scripts/optional/run_phase6_ml_only.sh
-
-# Phase6 — run NN models only (GPU)
-sbatch scripts/optional/run_phase6_nn_only.sh
-
-# Phase6 — build a custom ensemble from hand-picked models
-# Edit ML_MODELS and NN_EXPERIMENTS at the top of the script first
-sbatch scripts/optional/run_phase6_ensemble_custom.sh
-
-# Phase6 — enhanced ensemble report (v2): adds cross-type NN×ML pairs +
-# type-balanced RRF that ensures 50/50 NN/ML balance regardless of model count
-sbatch scripts/optional/run_phase6_ensemble_v2.sh
-
-# Phase6 — NN vs ML model comparison: UMAP visualization showing where
-# each model’s top-K candidates sit in embedding space + Jaccard overlap
-sbatch scripts/optional/run_phase6_model_comparison.sh
-# Step 7 — DFT Candidate Nomination: 28-perspective consensus jury
-# Evaluates all balanced model combinations across RRF, rank averaging,
-# and type-balanced RRF, then selects top-25 via confidence-tiered voting.
-# See Step 7 section above for full details.
-sbatch scripts/optional/run_dft_nomination.sh```
-
-### Model Type Imbalance (NN Domination)
-
-When ensembling 3 NN models + 2 ML classifiers with standard RRF, the NN models can dominate the vote (3-vs-2 majority). In our experiments, NN and ML models had **zero top-25 overlap** (Jaccard = 0.0) — they discover completely different candidates.
-
-To address this, the pipeline provides:
-
-| Tool | What it does |
-|------|--------------|
-| `--type_groups` flag | Automatically creates NN-only and ML-only sub-ensembles so you can inspect what each model *type* recommends independently |
-| `--include_singles` flag | Evaluates every model individually (per-model ranked lists and top-K files) before ensembling |
-| `type_balanced_rrf` method | 2-stage RRF: first aggregates within each type (NN consensus, ML consensus), then merges the two type-level scores with equal weight — guaranteeing 50/50 balance |
-| `--cross_type_pairs` flag | Tests all NN×ML pair combinations (3×2 = 6 pairs) to find which specific cross-type pair has best agreement |
-| `plot_phase6_model_comparison.py` | UMAP investigation: visualizes where NN vs ML top-K sit in embedding space, computes pairwise Jaccard, and produces a detailed text report |
-
-The default `06_run_discovery.sh` enables `--include_singles` and `--type_groups`. For the full analysis (cross-type pairs + type-balanced RRF), run the enhanced report:
-```bash
-sbatch scripts/optional/run_phase6_ensemble_v2.sh
-```
+The labeled set is split via Strategy D farthest-point coverage: ~600 train (~60 positives), ~600 val (~7 positives), ~8,800 test (~9 positives). The extreme imbalance (~0.1% positive rate in test) makes this a needle-in-a-haystack retrieval problem evaluated by recall@K.
 
 ---
 
 ## Key Design Decisions
 
-| Decision | Why |
-|----------|-----|
-| **Strategy D farthest-point split** | Standard random splits create train/val/test sets where some val positives have no structurally similar training positive. Strategy D samples farthest points first, guaranteeing coverage across embedding space. This yields honest recall metrics. |
-| **Pretrained embeddings for ML classifiers** | The 768-dim MOFTransformer CLS token is a powerful structural fingerprint *before* any fine-tuning. Training sklearn classifiers on these gives a complementary retrieval signal — they find positives by structural similarity rather than learned bandgap regression. |
-| **Multi-seed NN training** | Same architecture, same data, different random seeds → models that agree on easy cases but disagree on hard ones. This diversity is what makes ensembling powerful. |
-| **Reciprocal Rank Fusion (RRF)** | Different models produce scores on different scales (regression logits vs. classification probabilities vs. distance metrics). RRF works on *ranks*, not scores, so it fuses heterogeneous models without normalization artifacts. k=60 is a standard choice. |
-| **Exhaustive ablation** | With ~20 models and max combo size 4, there are ~6000 combinations. Testing all of them guarantees finding the true optimum rather than a locally greedy solution. This takes ~30 minutes on a single CPU. |
-| **Bandgap < 1.0 eV threshold** | Conventional threshold for identifying potentially conductive or narrow-gap semiconductor MOFs. MOFs below this threshold are candidates for electronic applications, photocatalysis, and sensor design. |
-| **Huber loss for regression** | The QMOF bandgap distribution has a long tail of high-bandgap MOFs (some > 8 eV). Huber loss caps the gradient for large errors, preventing these outliers from dominating training. |
-| **Early stopping on Spearman ρ** | We care about *ranking* MOFs correctly (top-K discovery), not predicting exact bandgap values. Spearman ρ measures rank correlation, aligning the early stopping criterion with our actual goal. |
-| **Type-balanced RRF** | When ensembling different model *types* (e.g., 3 NNs + 2 ML classifiers), standard RRF gives the majority type more votes. Type-balanced RRF first aggregates within each type, then merges across types with equal weight — preventing any single type from dominating the final ranking. |
-| **Multi-Perspective Consensus Nomination** | A single ensemble method can be sensitive to fusion choice or model subset. The 28-perspective jury tests all balanced combinations across three fusion methods, then selects candidates via confidence-tiered voting (Tier 1 ≥ 75%, Tier 2 ≥ 50%, Tier 3 ≥ 25%). Only balanced ensembles (equal NN:ML ratio) are used to avoid type domination. |
-
----
-
-## Output Artifacts
-
-After a full pipeline run (Steps 1-5), the following outputs are produced:
-
-```
-data/
-├── embeddings/
-│   └── embeddings_pretrained.npz             # 768-dim embeddings for all MOFs
-│
-├── splits/strategy_d_farthest_point/
-│   ├── train/ val/ test/                     # Split structure files (symlinks)
-│   └── {train,val,test}_bandgaps_regression.json   # Labels per split
-│
-├── embedding_classifiers/strategy_d_farthest_point/
-│   └── <method>/                             # One dir per sklearn method
-│       ├── model.joblib                      #   Saved model (reusable)
-│       ├── scaler.joblib                     #   Feature scaler
-│       ├── test_predictions.csv              #   Predictions ← used by ensemble
-│       └── final_results.json                #   Metrics
-│
-├── knn_results/strategy_d_farthest_point/
-│   ├── test_predictions.csv                  # kNN predictions
-│   └── knn_hybrid_results.json               # Metrics
-│
-├── ensemble_results/
-│   ├── exhaustive/                           # All 2/3/4-model combo results
-│   │   └── RRF/
-│   │       ├── ensemble_results.json         # Full metrics
-│   │       ├── recommended_combinations.txt  # ★ Best model subsets
-│   │       └── top{25,50,100}_for_discovery.txt
-│   └── selective/                            # Signal-bearing models only
-│
-├── final_results/                            # Comprehensive analysis report
-│   ├── summary.md                            # Text report
-│   └── fig*.png                              # 15+ figures
-│
-└── comparison_report/
-    ├── comparison_report.json                # All models compared
-    └── comparison_summary.csv                # Sortable summary table
-
-experiments/
-├── exp364_fulltune/
-│   ├── best_es-*.ckpt                        # NN checkpoint
-│   ├── test_predictions.csv                  # NN predictions
-│   └── final_results.json                    # NN metrics
-├── exp370_seed2/...
-└── exp371_seed3/...
-```
-
-After Step 6 (Phase6 discovery):
-
-```
-data/phase6/
-├── embedding_analysis/Phase6_embeddings.npz  # Embeddings for new MOFs
-├── ml_predictions/<method>/test_predictions.csv
-├── inference_results/
-│   ├── top25_for_DFT_rrf.txt                # ★ Top candidates by RRF
-│   ├── top25_for_DFT_rank_avg.txt           # Top candidates by rank avg
-│   └── inference_predictions.csv             # All predictions
-└── ensemble_report/
-    ├── phase6_ensemble_report.md             # Full report
-    ├── agreement_heatmap_top25.png           # Model agreement (readable labels)
-    ├── singles/                              # Per-model individual rankings
-    ├── nn_only_*/                            # NN-only sub-ensemble results
-    └── ml_only_*/                            # ML-only sub-ensemble results
-```
-
-After Step 7 (DFT Candidate Nomination):
-
-```
-data/phase6/DFT-subset-Nomination/
-├── FINAL_DFT_TOP25.txt                       # ★ The 25 CIF IDs for DFT
-├── FINAL_DFT_TOP25.csv                       # Votes, tiers, avg rank per nominee
-├── full_consensus_ranking.csv                # All ~10,000 structures ranked
-├── nomination_report.md                      # Full methodology + results
-├── perspective_summary.json                  # Machine-readable (28 perspectives)
-├── individual_models/                        # Per-model top-25 lists
-├── balanced_ensembles/                       # Per-combo top-25 by group
-│   ├── pairs/                                # 12 files (B+C groups)
-│   ├── quads/                                # 9 files (D+E+F groups)
-│   └── full/                                 # 2 files (G group)
-└── plots/                                    # 7 publication-quality figures
-    ├── consensus_votes_barplot.png
-    ├── consensus_heatmap.png
-    ├── perspective_agreement_jaccard.png
-    ├── nn_ml_agreement.png
-    ├── acceptance_ratio.png
-    ├── rank_stability_boxplot.png
-    └── umap_nominees.png
-```
-
----
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| `ModuleNotFoundError: No module named 'moftransformer'` | Install MOFTransformer: `pip install moftransformer`. Make sure you're in the correct virtualenv. |
-| `FileNotFoundError: embeddings_pretrained.npz` | Run Step 01 first. The embeddings must be extracted before any ML or ensemble step. |
-| `No test_predictions.csv found` for an experiment | The NN training may have failed or not finished. Check `experiments/<exp>/logs/` for error output. |
-| `CUDA out of memory` during NN training | Reduce `per_gpu_batchsize` in the experiment's `run.py` (e.g., from 8 to 4). Total `batch_size` will be accumulated via gradient accumulation. |
-| Ensemble finds no models | Ensure Steps 02 + 03 completed successfully and each model has `test_predictions.csv`. |
-| Phase6 discovery produces empty results | Check that `data/phase6/test_bandgaps_regression.json` exists and that MOF structure files (.grid, .griddata16, .graphdata) are in the right location. |
-| Symlinks broken after moving files between splits | Run `bash tools/fix_split_symlinks.sh` to repair, then `sbatch scripts/optional/run_reinfer.sh` to recompute predictions. |
-| Different results on re-run | GPU non-determinism in CUDA/cuDNN causes tiny floating-point differences (~1e-5). Use `--deterministic` flag in `reinfer_nn.py` for exact reproducibility (slower). |
-| Cannot find structure files for Phase6 | Use `bash discovery/collect_inference_structures.sh` — it searches multiple directories and gathers all 3 files per MOF into `data/phase6/test/`. |
+| Decision | Rationale |
+|----------|-----------|
+| **Strategy D farthest-point split** | Guarantees every val/test positive has a structurally similar training positive, yielding honest recall metrics. |
+| **Pretrained embeddings for ML** | The 768-dim PMTransformer CLS token is a powerful structural fingerprint before any fine-tuning, providing an independent retrieval signal complementary to the fine-tuned regression model. |
+| **Multi-seed NN training** | Same architecture, different seeds produce models that agree on easy cases but disagree on hard ones, making ensemble fusion effective. |
+| **Reciprocal Rank Fusion** | Rank-based fusion handles heterogeneous score scales (regression logits vs classification probabilities) without normalisation artifacts. |
+| **Huber loss + Spearman early stopping** | Huber is robust to outlier bandgaps; Spearman rho measures ranking quality, aligning training with the discovery objective. |
+| **1 NN + 1 ML for nomination** | Simpler than multi-model ensembles; diversity comes from SOAP-based selection rather than model proliferation. Ensemble experiments with 3 NN + 2 ML remain available via Step 4. |
+| **SOAP diversity lens** | SOAP descriptors provide a purely geometric/chemical measure of structural dissimilarity, independent of the model features. This prevents the nominees from clustering in a learned-feature artifact. |
+| **Long-tail exploration** | Reserves 5 of the 25 slots for high-uncertainty structures outside the main pool -- a hedge against the ensemble's blind spots. |
 
 ---
 
 ## Citation
 
-If you use this code in your research, please cite:
-
 ```bibtex
 @misc{mof-bandgap-discovery,
-  title  = {MOF-Bandgap-Discovery: Multi-Model Ensemble Learning for
+  title  = {MOF-Bandgap-Discovery: Diversity-Aware Ensemble Learning for
             Low-Bandgap Metal--Organic Framework Screening},
-  author = {Erbil, Ege Yi\u011fit},
+  author = {Erbil, Ege Yi\u{g}it},
   year   = {2026},
   note   = {Ko\c{c} University},
   url    = {https://github.com/EYErbil/MOF-Bandgap-Discovery}
 }
 ```
 
----
-
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE) for details.

@@ -11,42 +11,23 @@
 #SBATCH --mem=32G
 
 # =============================================================================
-# STEP 6: Phase6 Discovery — Inference on New MOF Dataset (No Labels)
+# STEP 6: Discovery — Inference on New MOF Dataset (No Labels)
 # =============================================================================
 #
-# Applies ALL trained models (from Steps 2-4) to a new, unlabeled MOF dataset
+# Applies all trained models (from Steps 2-3) to a new, unlabeled MOF dataset
 # to rank candidates for DFT validation. No ground-truth labels are needed.
 #
 # PIPELINE:
 #   6a. Extract pretrained embeddings for new MOFs
 #   6b. Run ML inference (load saved sklearn models, score new embeddings)
 #   6c. Run NN inference (load checkpoints, forward pass on structures)
-#   6d. Ensemble all predictions → consensus top-25 for DFT
+#   6d. Ensemble all predictions -> consensus top-25 for DFT
 #   6e. Agreement analysis + per-model evaluation + type-group sub-ensembles
-#
-# CONFIGURATION:
-#   Edit NN_EXPERIMENTS and ML_METHODS below to match your trained models.
-#
-# OUTPUT:
-#   phase6/inference_results/
-#     ├── top25_for_DFT_rrf.txt      — Top 25 by Reciprocal Rank Fusion
-#     ├── top25_for_DFT_rank_avg.txt — Top 25 by rank averaging
-#     └── inference_predictions.csv  — All predictions
-#   phase6/ensemble_report/
-#     ├── phase6_ensemble_report.md  — Full report
-#     ├── agreement_heatmap_top25.png — Readable labels (smart abbreviation)
-#     ├── singles/                   — Per-model individual rankings
-#     ├── nn_only_*/                 — NN-only sub-ensemble results
-#     └── ml_only_*/                 — ML-only sub-ensemble results
-#
-# OPTIONAL FOLLOW-UP SCRIPTS:
-#   sbatch scripts/optional/run_phase6_ensemble_v2.sh       — Cross-type pairs + type-balanced RRF
-#   sbatch scripts/optional/run_phase6_model_comparison.sh  — UMAP NN vs ML investigation
 #
 # PREREQUISITES:
 #   - Steps 02-03 completed (trained models exist)
-#   - New MOF structures in data/phase6/ with .grid, .griddata16, .graphdata
-#   - data/phase6/test_bandgaps_regression.json (CIF IDs, bandgap can be 0.0)
+#   - New MOF structures in data/unlabeled/ with .grid, .griddata16, .graphdata
+#   - data/unlabeled/test_bandgaps_regression.json (CIF IDs, bandgap can be 0.0)
 #
 # USAGE:
 #   sbatch scripts/06_run_discovery.sh
@@ -57,7 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 load_modules
 cd "$BASE_DIR"
-mkdir -p logs "$PHASE6_DATA/inference_results" "$PHASE6_DATA/ensemble_report"
+mkdir -p logs "$DISCOVERY_DATA/inference_results" "$DISCOVERY_DATA/ensemble_report"
 
 # --- Configuration -----------------------------------------------------------
 TOP_K=25
@@ -70,20 +51,20 @@ NN_EXPERIMENTS="exp364_fulltune exp370_seed2 exp371_seed3"
 # To include more, add method names separated by spaces (e.g., "smote_extra_trees smote_random_forest extra_trees").
 ML_METHODS="smote_extra_trees smote_random_forest"
 
-# Include kNN? (1=yes, 0=no). Set to 0 unless kNN predictions exist for Phase6.
+# Include kNN? (1=yes, 0=no). Set to 0 unless kNN predictions exist.
 USE_KNN=0
 
 # =============================================================================
-# STEP 6a: Extract Phase6 embeddings
+# STEP 6a: Extract unlabeled embeddings
 # =============================================================================
-section "STEP 6a: EXTRACT PHASE6 EMBEDDINGS"
+section "STEP 6a: EXTRACT UNLABELED EMBEDDINGS"
 
-python data_preparation/extract_phase6_embeddings_pretrained.py \
-    --data_dir "$PHASE6_DATA" \
-    --output_dir "$PHASE6_DATA/embedding_analysis"
+python data_preparation/extract_unlabeled_embeddings.py \
+    --data_dir "$DISCOVERY_DATA" \
+    --output_dir "$DISCOVERY_DATA/embedding_analysis"
 
-PHASE6_NPZ="$PHASE6_DATA/embedding_analysis/Phase6_embeddings.npz"
-echo "  Output: $PHASE6_NPZ"
+DISCOVERY_NPZ="$DISCOVERY_DATA/embedding_analysis/Phase6_embeddings.npz"
+echo "  Output: $DISCOVERY_NPZ"
 
 # =============================================================================
 # STEP 6b: ML inference (load saved models, predict on new embeddings)
@@ -91,11 +72,11 @@ echo "  Output: $PHASE6_NPZ"
 section "STEP 6b: ML INFERENCE"
 
 python src/predict_with_embedding_classifier.py \
-    --embeddings_path "$PHASE6_NPZ" \
+    --embeddings_path "$DISCOVERY_NPZ" \
     --models_dir "$SKLEARN_DIR" \
-    --output_dir "$PHASE6_DATA/ml_predictions"
+    --output_dir "$DISCOVERY_DATA/ml_predictions"
 
-ML_PRED_COUNT=$(find "$PHASE6_DATA/ml_predictions" -name "test_predictions.csv" 2>/dev/null | wc -l)
+ML_PRED_COUNT=$(find "$DISCOVERY_DATA/ml_predictions" -name "test_predictions.csv" 2>/dev/null | wc -l)
 echo "  ML methods with predictions: $ML_PRED_COUNT"
 
 # =============================================================================
@@ -117,7 +98,7 @@ for exp_name in $NN_EXPERIMENTS; do
     echo "  Inferring with $exp_name (checkpoint: $(basename $ckpt))..."
     cd "$exp_dir"
     python "$BASE_DIR/discovery/run_inference_from_cwd.py" \
-        --data_dir "$PHASE6_DATA" \
+        --data_dir "$DISCOVERY_DATA" \
         --top_k "$TOP_K"
     cd "$BASE_DIR"
     if [ -f "$exp_dir/inference_predictions.csv" ]; then
@@ -135,15 +116,15 @@ section "STEP 6d: ENSEMBLE → TOP $TOP_K"
 # Build prediction directories
 PRED_DIRS=""
 for m in $ML_METHODS; do
-    d="$PHASE6_DATA/ml_predictions/$m"
+    d="$DISCOVERY_DATA/ml_predictions/$m"
     if [ -f "$d/test_predictions.csv" ]; then
         PRED_DIRS="$PRED_DIRS $d"
         echo "  [ML] $m"
     fi
 done
 
-if [ "$USE_KNN" -eq 1 ] && [ -f "$PHASE6_DATA/knn_predictions/test_predictions.csv" ]; then
-    PRED_DIRS="$PRED_DIRS $PHASE6_DATA/knn_predictions"
+if [ "$USE_KNN" -eq 1 ] && [ -f "$DISCOVERY_DATA/knn_predictions/test_predictions.csv" ]; then
+    PRED_DIRS="$PRED_DIRS $DISCOVERY_DATA/knn_predictions"
     echo "  [kNN] knn_predictions"
 fi
 
@@ -157,10 +138,10 @@ for exp_name in $NN_EXPERIMENTS; do
     fi
 done
 
-python discovery/ensemble_phase6_predictions.py \
+python discovery/ensemble_predictions.py \
     --prediction_dirs $PRED_DIRS \
     --nn_predictions $NN_CSV \
-    --output_dir "$PHASE6_DATA/inference_results" \
+    --output_dir "$DISCOVERY_DATA/inference_results" \
     --top_k "$TOP_K"
 
 # =============================================================================
@@ -168,25 +149,19 @@ python discovery/ensemble_phase6_predictions.py \
 # =============================================================================
 section "STEP 6e: ENSEMBLE REPORT"
 
-python discovery/phase6_ensemble_report.py \
+python discovery/ensemble_report.py \
     --base_dir "$BASE_DIR" \
     --auto_discover \
     --include_singles \
     --type_groups \
-    --output_dir "$PHASE6_DATA/ensemble_report"
+    --output_dir "$DISCOVERY_DATA/ensemble_report"
 
-# NOTE: For the full enhanced report with cross-type pair analysis, run:
-#   sbatch scripts/optional/run_phase6_ensemble_v2.sh
-# That adds --cross_type_pairs (all NN x ML pair combos) and type_balanced_rrf.
-
-section "STEP 6 COMPLETE — PHASE6 DISCOVERY"
+section "STEP 6 COMPLETE"
 echo ""
 echo "  Top $TOP_K candidates for DFT:"
-echo "    RRF:      $PHASE6_DATA/inference_results/top${TOP_K}_for_DFT_rrf.txt"
-echo "    Rank avg: $PHASE6_DATA/inference_results/top${TOP_K}_for_DFT_rank_avg.txt"
-echo "  Ensemble report: $PHASE6_DATA/ensemble_report/phase6_ensemble_report.md"
+echo "    RRF:      $DISCOVERY_DATA/inference_results/top${TOP_K}_for_DFT_rrf.txt"
+echo "    Rank avg: $DISCOVERY_DATA/inference_results/top${TOP_K}_for_DFT_rank_avg.txt"
+echo "  Ensemble report: $DISCOVERY_DATA/ensemble_report/"
 echo ""
-echo "  For NN vs ML investigation, run:"
-echo "    sbatch scripts/optional/run_phase6_model_comparison.sh"
-echo "  For enhanced report (cross-type pairs + type-balanced RRF):"
-echo "    sbatch scripts/optional/run_phase6_ensemble_v2.sh"
+echo "  Next: run Step 7 for diversity-aware DFT candidate nomination:"
+echo "    sbatch scripts/07_nominate_candidates.sh"

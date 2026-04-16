@@ -33,7 +33,7 @@ slurm-*.out
 .DS_Store
 Thumbs.db
 .vscode/
-.idea/
+.idea
 *.swp
 *.swo
 *~
